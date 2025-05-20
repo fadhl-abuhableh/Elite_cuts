@@ -1,12 +1,22 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// These should ideally come from environment variables in production
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Get the Supabase URL and anonymous key from environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Log information to help debug (only in development)
+if (import.meta.env.DEV) {
+  console.log('Supabase URL available:', !!supabaseUrl);
+  console.log('Supabase Key available:', !!supabaseAnonKey);
+}
 
 // Create a single supabase client for interacting with your database
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Make sure we have default values (empty strings) to prevent runtime errors during initialization
+export const supabase = createClient(
+  supabaseUrl || '', 
+  supabaseAnonKey || ''
+);
 
 // Types for our database tables
 export interface DbService {

@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -37,14 +38,14 @@ function App() {
       setSupabaseConfigured(false);
       toast.error(
         "Supabase environment variables are missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
-        { duration: 10000 }
+        { duration: 10000, id: "supabase-env-error" }
       );
     }
   }, []);
 
   return (
     <>
-      <SupabaseInitializer />
+      {supabaseConfigured && <SupabaseInitializer />}
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
