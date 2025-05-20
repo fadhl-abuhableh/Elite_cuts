@@ -1,3 +1,4 @@
+
 import { supabase, DbService, DbBarber } from '@/lib/supabase';
 
 // These are fallback data in case the Supabase connection fails
@@ -49,24 +50,32 @@ export const barbers = [
     id: 'barber-1',
     name: 'James Wilson',
     bio: 'Master barber with over 15 years of experience specializing in classic cuts.',
+    specialization: 'Classic Cuts',
+    experience: '15+ years',
     image: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-1.2.1&auto=format&fit=crop&w=334&q=80'
   },
   {
     id: 'barber-2',
     name: 'Michael Rodriguez',
     bio: 'Style expert who excels in modern trends and precision fades.',
+    specialization: 'Modern Trends & Fades',
+    experience: '8 years',
     image: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?ixlib=rb-1.2.1&auto=format&fit=crop&w=334&q=80'
   },
   {
     id: 'barber-3',
     name: 'David Thompson',
     bio: 'Beard specialist with a passion for traditional barbering techniques.',
+    specialization: 'Beard Styling',
+    experience: '10 years',
     image: 'https://images.unsplash.com/photo-1552058544-f2b08422138a?ixlib=rb-1.2.1&auto=format&fit=crop&w=344&q=80'
   },
   {
     id: 'barber-4',
     name: 'Robert Jackson',
     bio: 'Expert in hair coloring and contemporary styles.',
+    specialization: 'Hair Coloring',
+    experience: '12 years',
     image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&auto=format&fit=crop&w=334&q=80'
   }
 ];
@@ -96,6 +105,10 @@ export const loadRealData = async () => {
       id: barber.id,
       name: barber.name,
       bio: barber.bio || '',
+      // Extract specialization from bio or use a default
+      specialization: extractSpecialization(barber.bio) || 'Professional Barber',
+      // Extract experience from bio or use a default
+      experience: extractExperience(barber.bio) || '5+ years',
       image: barber.image_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-1.2.1&auto=format&fit=crop&w=334&q=80' // Default image
     }));
 
@@ -108,6 +121,47 @@ export const loadRealData = async () => {
     return { services, barbers }; // Return fallback data
   }
 };
+
+// Helper functions to extract specialization and experience from barber bio
+function extractSpecialization(bio: string | null): string | null {
+  if (!bio) return null;
+  
+  // Check for common specialization indicators
+  const specializationMatches = [
+    /specializ(es|ing|ed) in ([^\.]+)/i,
+    /expert in ([^\.]+)/i,
+    /master of ([^\.]+)/i
+  ];
+  
+  for (const pattern of specializationMatches) {
+    const match = bio.match(pattern);
+    if (match && match[2]) return match[2];
+    if (match && match[1]) return match[1];
+  }
+  
+  return null;
+}
+
+function extractExperience(bio: string | null): string | null {
+  if (!bio) return null;
+  
+  // Check for experience patterns
+  const experienceMatches = [
+    /(\d+)[\+]? years? of experience/i,
+    /experience of (\d+)[\+]? years/i,
+    /(\d+)[\+]? years in/i
+  ];
+  
+  for (const pattern of experienceMatches) {
+    const match = bio.match(pattern);
+    if (match && match[1]) {
+      const years = match[1];
+      return `${years}+ years`;
+    }
+  }
+  
+  return null;
+}
 
 // Create a helper to initialize data for components that need it
 let initialized = false;
