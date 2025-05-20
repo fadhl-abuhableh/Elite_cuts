@@ -5,7 +5,7 @@ import BookingForm from '@/components/BookingForm';
 import { barbers } from '@/utils/chatbotData';
 
 const Booking = () => {
-  const [showFAQ, setShowFAQ] = useState(false);
+  const [showFAQ, setShowFAQ] = useState<string>('');
   
   const toggleFAQ = (id: string) => {
     setShowFAQ(prev => prev === id ? '' : id);
