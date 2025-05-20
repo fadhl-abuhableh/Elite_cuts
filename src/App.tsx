@@ -30,9 +30,9 @@ function App() {
   const [supabaseConfigured, setSupabaseConfigured] = useState(true);
 
   useEffect(() => {
-    // Check if Supabase env vars are configured
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    // We now have hardcoded fallbacks, so we don't need to check if env vars are set
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://zkdglqmguhyyxcmqvwhr.supabase.co";
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprZGdscW1ndWh5eXhjbXF2d2hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3Nzk3MDIsImV4cCI6MjA2MzM1NTcwMn0.9mzbiLC2zOcN5gSLl_4WC1Fh8kCftAF4Eg0f1PbqvbM";
     
     if (!supabaseUrl || !supabaseKey) {
       setSupabaseConfigured(false);
@@ -45,7 +45,7 @@ function App() {
 
   return (
     <>
-      {supabaseConfigured && <SupabaseInitializer />}
+      <SupabaseInitializer />
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />

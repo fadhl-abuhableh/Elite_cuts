@@ -1,9 +1,12 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Get the Supabase URL and anonymous key from environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Hard-coded Supabase credentials as fallback
+const SUPABASE_URL = "https://zkdglqmguhyyxcmqvwhr.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprZGdscW1ndWh5eXhjbXF2d2hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3Nzk3MDIsImV4cCI6MjA2MzM1NTcwMn0.9mzbiLC2zOcN5gSLl_4WC1Fh8kCftAF4Eg0f1PbqvbM";
+
+// Get the Supabase URL and anonymous key from environment variables with fallback
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY;
 
 // Log information to help debug (only in development)
 if (import.meta.env.DEV) {
@@ -12,11 +15,7 @@ if (import.meta.env.DEV) {
 }
 
 // Create a single supabase client for interacting with your database
-// Make sure we have default values (empty strings) to prevent runtime errors during initialization
-export const supabase = createClient(
-  supabaseUrl || '', 
-  supabaseAnonKey || ''
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Types for our database tables
 export interface DbService {
