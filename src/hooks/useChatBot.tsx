@@ -10,15 +10,31 @@ import {
   fetchBarbers,
   fetchFAQs,
   fetchPromotions,
-  checkBarberAvailability
+  checkBarberAvailability,
+  createAppointment
 } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface Message {
   id: string;
   sender: 'user' | 'bot';
   text: string;
   timestamp: Date;
+}
+
+interface BookingState {
+  active: boolean;
+  step: 'service' | 'barber' | 'date' | 'time' | 'name' | 'email' | 'phone' | 'confirmation' | 'complete';
+  data: {
+    service?: string;
+    barber?: string;
+    date?: string;
+    time?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
 }
 
 export function useChatBot() {
@@ -39,6 +55,13 @@ export function useChatBot() {
   const [promotions, setPromotions] = useState<DbPromotion[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dataInitialized, setDataInitialized] = useState(false);
+  const [bookingState, setBookingState] = useState<BookingState>({
+    active: false,
+    step: 'service',
+    data: {}
+  });
+  
+  const navigate = useNavigate();
 
   // Fetch data from Supabase
   useEffect(() => {
@@ -109,12 +132,228 @@ export function useChatBot() {
     }, 800);
   };
 
+  const handleBookingFlow = (text: string): string => {
+    // If booking flow is not active, return empty to let regular processing happen
+    if (!bookingState.active) return '';
+    
+    const currentStep = bookingState.step;
+    let response = '';
+    
+    // Process the current booking step
+    switch (currentStep) {
+      case 'service':
+        if (!services) return "I'm having trouble accessing our service information. Please try again later.";
+        
+        const serviceMatch = findServiceByName(text, services);
+        if (serviceMatch) {
+          setBookingState({
+            ...bookingState,
+            step: 'barber',
+            data: { ...bookingState.data, service: serviceMatch.id }
+          });
+          
+          response = `Great! You've selected ${serviceMatch.name}. Which barber would you prefer for your appointment?`;
+          if (barbers && barbers.length > 0) {
+            response += ` Available barbers: ${barbers.map(b => b.name).join(', ')}.`;
+          }
+        } else {
+          response = "I don't recognize that service. Please choose from one of our available services:";
+          if (services && services.length > 0) {
+            response += ` ${services.map(s => s.name).join(', ')}.`;
+          }
+        }
+        break;
+        
+      case 'barber':
+        if (!barbers) return "I'm having trouble accessing our barber information. Please try again later.";
+        
+        const barberMatch = findBarberByName(text, barbers);
+        if (barberMatch) {
+          setBookingState({
+            ...bookingState,
+            step: 'date',
+            data: { ...bookingState.data, barber: barberMatch.id }
+          });
+          
+          response = `Great! You've selected ${barberMatch.name}. What date would you like to book? (e.g., tomorrow, next Friday, May 25)`;
+        } else {
+          response = "I don't recognize that barber. Please choose from one of our available barbers:";
+          if (barbers && barbers.length > 0) {
+            response += ` ${barbers.map(b => b.name).join(', ')}.`;
+          }
+        }
+        break;
+        
+      case 'date':
+        const dateMatch = extractDateReference(text);
+        if (dateMatch) {
+          setBookingState({
+            ...bookingState,
+            step: 'time',
+            data: { ...bookingState.data, date: dateMatch.toISOString().split('T')[0] }
+          });
+          
+          response = `Got it! You've selected ${dateMatch.toLocaleDateString()}. What time would you prefer? (e.g., morning, afternoon, 2 PM)`;
+        } else {
+          response = "I couldn't understand that date. Please specify a date for your appointment (e.g., tomorrow, next Friday, May 25).";
+        }
+        break;
+        
+      case 'time':
+        const timeMatch = extractTimeReference(text);
+        if (timeMatch) {
+          setBookingState({
+            ...bookingState,
+            step: 'name',
+            data: { ...bookingState.data, time: timeMatch }
+          });
+          
+          response = `Great! What's your full name for the appointment?`;
+        } else {
+          response = "I couldn't understand that time. Please specify a time for your appointment (e.g., morning, afternoon, 2 PM).";
+        }
+        break;
+        
+      case 'name':
+        if (text.trim().length >= 2) {
+          setBookingState({
+            ...bookingState,
+            step: 'email',
+            data: { ...bookingState.data, name: text.trim() }
+          });
+          
+          response = `Thanks ${text.trim()}! What's your email address?`;
+        } else {
+          response = "Please provide your full name for the appointment.";
+        }
+        break;
+        
+      case 'email':
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(text.trim())) {
+          setBookingState({
+            ...bookingState,
+            step: 'phone',
+            data: { ...bookingState.data, email: text.trim() }
+          });
+          
+          response = `Great! What's your phone number?`;
+        } else {
+          response = "That doesn't appear to be a valid email address. Please provide a valid email.";
+        }
+        break;
+        
+      case 'phone':
+        const phoneRegex = /^[0-9()\-\s+]{7,15}$/;
+        if (phoneRegex.test(text.trim().replace(/\s/g, ''))) {
+          setBookingState({
+            ...bookingState,
+            step: 'confirmation',
+            data: { ...bookingState.data, phone: text.trim() }
+          });
+          
+          // Get names for display instead of IDs
+          const selectedService = services?.find(s => s.id === bookingState.data.service);
+          const selectedBarber = barbers?.find(b => b.id === bookingState.data.barber);
+          
+          response = `Perfect! Here's a summary of your appointment:
+          
+Service: ${selectedService?.name || 'Unknown service'}
+Barber: ${selectedBarber?.name || 'Unknown barber'}
+Date: ${new Date(bookingState.data.date || '').toLocaleDateString()}
+Time: ${bookingState.data.time}
+Name: ${bookingState.data.name}
+Email: ${bookingState.data.email}
+
+Is this information correct? Please respond with "yes" to confirm or "no" to restart.`;
+        } else {
+          response = "That doesn't appear to be a valid phone number. Please provide a valid phone number.";
+        }
+        break;
+        
+      case 'confirmation':
+        if (text.toLowerCase().includes('yes') || text.toLowerCase().includes('confirm')) {
+          // Handle booking confirmation
+          const selectedService = services?.find(s => s.id === bookingState.data.service);
+          const selectedBarber = barbers?.find(b => b.id === bookingState.data.barber);
+          
+          setBookingState({
+            ...bookingState,
+            step: 'complete',
+            active: false
+          });
+          
+          // Simulate booking success (in a real app, you'd make an API call here)
+          setTimeout(() => {
+            toast({
+              title: "Appointment Booked!",
+              description: `Your appointment with ${selectedBarber?.name} for ${selectedService?.name} has been scheduled.`,
+            });
+          }, 1000);
+          
+          response = `Thank you! Your appointment has been successfully booked. You'll receive a confirmation email at ${bookingState.data.email}. We look forward to seeing you on ${new Date(bookingState.data.date || '').toLocaleDateString()} at ${bookingState.data.time}!`;
+          
+          // Reset booking state after completion
+          setTimeout(() => {
+            setBookingState({
+              active: false,
+              step: 'service',
+              data: {}
+            });
+          }, 1000);
+        } else if (text.toLowerCase().includes('no')) {
+          setBookingState({
+            active: true,
+            step: 'service',
+            data: {}
+          });
+          
+          response = "Let's restart your booking. Which service would you like to book?";
+        } else {
+          response = "Please respond with 'yes' to confirm your appointment or 'no' to restart the booking process.";
+        }
+        break;
+        
+      default:
+        response = "I'm not sure how to proceed with your booking. Let's try again. Which service would you like to book?";
+        setBookingState({
+          active: true,
+          step: 'service',
+          data: {}
+        });
+    }
+    
+    return response;
+  };
+
   const processUserInput = async (text: string): Promise<string> => {
     if (!dataInitialized) {
       return "I'm still loading data. Please try again in a moment.";
     }
     
+    // Check if we're in active booking flow
+    const bookingResponse = handleBookingFlow(text);
+    if (bookingResponse) return bookingResponse;
+    
     const lowercaseText = text.toLowerCase();
+    
+    // Check for booking or appointment requests
+    if (lowercaseText.includes('book') || 
+        lowercaseText.includes('appoint') || 
+        lowercaseText.includes('schedule') || 
+        lowercaseText.includes('reserve') ||
+        (lowercaseText.includes('haircut') && (lowercaseText.includes('want') || lowercaseText.includes('like'))) ||
+        text.toLowerCase() === 'yes') {
+      
+      // Activate booking flow
+      setBookingState({
+        active: true,
+        step: 'service',
+        data: {}
+      });
+      
+      return "Great! I'd be happy to help you book an appointment. Which service would you like to book?";
+    }
     
     // Check for greetings
     if (/^(hi|hello|hey|greetings)[\s!.]*$/i.test(lowercaseText)) {
@@ -169,11 +408,7 @@ export function useChatBot() {
     }
     
     // Check for barber availability
-    if (lowercaseText.includes('available') || 
-        lowercaseText.includes('book') || 
-        lowercaseText.includes('schedule') || 
-        lowercaseText.includes('appointment') || 
-        lowercaseText.includes('time')) {
+    if (lowercaseText.includes('available') || lowercaseText.includes('free')) {
       
       // Look for patterns like "Is [name] available on [day]?" or "Book with [name]"
       const barberMatch = extractBarberName(text, barbers || []);
@@ -206,10 +441,6 @@ export function useChatBot() {
         }
         
         return `I'm having trouble checking availability right now. Please try again later or contact us directly at (123) 456-7890.`;
-      } else if ((lowercaseText.includes('available') || lowercaseText.includes('book')) && (!barberMatch || !dateMatch)) {
-        return `To check availability, please specify both a barber name and day. For example, "Is James available tomorrow?" or "When is Michael free on Friday?"`;
-      } else if (lowercaseText.includes('appointment') || lowercaseText.includes('book')) {
-        return `You can book an appointment through our booking page, or I can help you get started. What service would you like to book, and do you have a preferred barber and time?`;
       }
     }
     
@@ -257,8 +488,23 @@ export function useChatBot() {
     if (lowercaseText.includes('hour') || 
         lowercaseText.includes('open') || 
         lowercaseText.includes('close') || 
-        lowercaseText.includes('when') && lowercaseText.includes('open')) {
+        (lowercaseText.includes('when') && lowercaseText.includes('open'))) {
       return "Our hours are:\nMonday-Friday: 9:00 AM - 7:00 PM\nSaturday: 10:00 AM - 6:00 PM\nSunday: 10:00 AM - 4:00 PM";
+    }
+    
+    // Check for parking
+    if (lowercaseText.includes('parking') || lowercaseText.includes('park')) {
+      return "Yes, we offer free parking in front of our shop and there's additional street parking nearby.";
+    }
+    
+    // Check for gift cards
+    if (lowercaseText.includes('gift') || lowercaseText.includes('card') || lowercaseText.includes('present')) {
+      return "Yes, we offer gift cards in various denominations which can be purchased in-store or online through our website.";
+    }
+    
+    // Check for cancellation policy
+    if (lowercaseText.includes('cancel') || lowercaseText.includes('reschedule')) {
+      return "We request at least 24 hours notice for cancellations or rescheduling. Late cancellations or no-shows may be subject to a fee for the reserved time.";
     }
     
     // Default response for unrecognized inputs
@@ -343,7 +589,8 @@ export function useChatBot() {
       if (dateMatch[1] && dateMatch[2]) {
         // Format: "15th May"
         day = parseInt(dateMatch[1]);
-        month = days.indexOf(dateMatch[2].toLowerCase());
+        const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+        month = monthNames.indexOf(dateMatch[2].toLowerCase());
       } else {
         // Format: "May 15"
         const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -357,10 +604,102 @@ export function useChatBot() {
       }
     }
     
+    // Handle generic timeframe mentions
+    if (lowercaseText.includes('next week')) {
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      return nextWeek;
+    }
+    
+    if (lowercaseText.includes('weekend')) {
+      const weekend = new Date();
+      const daysUntilSaturday = (6 - weekend.getDay() + 7) % 7;
+      weekend.setDate(weekend.getDate() + daysUntilSaturday);
+      return weekend;
+    }
+    
     // Default to tomorrow if no specific date is found
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow;
+  };
+  
+  // Helper function to extract time reference
+  const extractTimeReference = (text: string): string => {
+    const lowercaseText = text.toLowerCase();
+    
+    // Check for specific times in format "X PM/AM" or "X:XX PM/AM"
+    const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+    if (timeMatch) {
+      const hour = parseInt(timeMatch[1]);
+      const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      const period = timeMatch[3].toLowerCase();
+      
+      let formattedHour = period === 'pm' && hour < 12 ? hour + 12 : hour;
+      if (period === 'am' && hour === 12) formattedHour = 0;
+      
+      return `${formattedHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    }
+    
+    // Check for time of day references
+    if (lowercaseText.includes('morning')) {
+      return '10:00';
+    } else if (lowercaseText.includes('afternoon')) {
+      return '14:00';
+    } else if (lowercaseText.includes('evening')) {
+      return '17:00';
+    }
+    
+    // Default time if nothing matches
+    return '12:00';
+  };
+
+  const findServiceByName = (query: string, services: DbService[]): DbService | null => {
+    const normalizedQuery = query.toLowerCase().trim();
+    
+    // First try exact match
+    for (const service of services) {
+      if (service.name.toLowerCase() === normalizedQuery) {
+        return service;
+      }
+    }
+    
+    // Try partial match
+    for (const service of services) {
+      if (service.name.toLowerCase().includes(normalizedQuery)) {
+        return service;
+      }
+    }
+    
+    return null;
+  };
+  
+  const findBarberByName = (query: string, barbers: DbBarber[]): DbBarber | null => {
+    const normalizedQuery = query.toLowerCase().trim();
+    
+    // First try exact match
+    for (const barber of barbers) {
+      if (barber.name.toLowerCase() === normalizedQuery) {
+        return barber;
+      }
+    }
+    
+    // Try first name match
+    for (const barber of barbers) {
+      const firstName = barber.name.split(' ')[0].toLowerCase();
+      if (firstName === normalizedQuery) {
+        return barber;
+      }
+    }
+    
+    // Try partial match
+    for (const barber of barbers) {
+      if (barber.name.toLowerCase().includes(normalizedQuery)) {
+        return barber;
+      }
+    }
+    
+    return null;
   };
 
   const findServiceFromSupabase = (query: string, services: DbService[]): DbService | null => {
@@ -465,6 +804,13 @@ export function useChatBot() {
     
     return null;
   };
+  
+  // Handle direct navigation to booking page
+  const navigateToBooking = (serviceId?: string) => {
+    const queryParams = serviceId ? `?service=${serviceId}` : '';
+    navigate(`/booking${queryParams}`);
+    setIsOpen(false);
+  };
 
   return {
     isOpen,
@@ -476,7 +822,8 @@ export function useChatBot() {
     handleSend,
     isLoading,
     barbers,
-    services
+    services,
+    navigateToBooking
   };
 }
 

@@ -6,7 +6,7 @@ interface QuickSuggestionsProps {
 export function QuickSuggestions({ onSuggestionClick }: QuickSuggestionsProps) {
   const suggestions = [
     { text: "Services & pricing", query: "What services do you offer and what are your prices?" },
-    { text: "Barber availability", query: "Is James available tomorrow?" },
+    { text: "Book appointment", query: "I'd like to book an appointment" },
     { text: "Hours & location", query: "What are your hours and where are you located?" },
     { text: "Current promotions", query: "Do you have any current promotions?" }
   ];

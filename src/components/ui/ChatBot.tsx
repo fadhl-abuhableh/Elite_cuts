@@ -22,7 +22,8 @@ export function ChatBot({ className }: ChatBotProps) {
     messages,
     isTyping,
     handleSend,
-    isLoading
+    isLoading,
+    navigateToBooking
   } = useChatBot();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -36,6 +37,7 @@ export function ChatBot({ className }: ChatBotProps) {
   // Handle suggestion clicks
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion);
+    handleSend();
   };
 
   if (isLoading && isOpen) {
@@ -111,7 +113,10 @@ export function ChatBot({ className }: ChatBotProps) {
           </div>
 
           {/* Quick suggestions */}
-          <QuickSuggestions onSuggestionClick={handleSuggestionClick} />
+          <QuickSuggestions onSuggestionClick={(suggestion) => {
+            setInput(suggestion);
+            setTimeout(() => handleSend(), 100);
+          }} />
 
           {/* Input area */}
           <ChatInput 
