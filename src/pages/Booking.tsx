@@ -1,43 +1,71 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChatBot } from '@/components/ui/ChatBot';
 import BookingForm from '@/components/BookingForm';
-import { barbers } from '@/utils/chatbotData';
+import { fetchFAQs } from '@/lib/supabase';
+import { Map } from '@/components/Map';
 
 const Booking = () => {
   const [showFAQ, setShowFAQ] = useState<string>('');
+  const [faqs, setFaqs] = useState<{id: string, question: string, answer: string}[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    const loadFAQs = async () => {
+      setIsLoading(true);
+      try {
+        const dbFaqs = await fetchFAQs();
+        if (dbFaqs && dbFaqs.length > 0) {
+          // Use FAQs from database
+          setFaqs(dbFaqs.map(faq => ({
+            id: faq.id,
+            question: faq.question,
+            answer: faq.answer
+          })));
+        } else {
+          // Fallback to default FAQs if database fetch fails
+          setFaqs([
+            {
+              id: 'faq1',
+              question: 'What happens if I need to cancel my appointment?',
+              answer: 'We understand plans change. We request at least 24 hours notice for cancellations. Late cancellations or no-shows may be subject to a fee for the reserved time.'
+            },
+            {
+              id: 'faq2',
+              question: 'How early should I arrive for my appointment?',
+              answer: 'We recommend arriving 5-10 minutes before your scheduled appointment time to ensure a smooth check-in process.'
+            },
+            {
+              id: 'faq3',
+              question: 'What forms of payment do you accept?',
+              answer: 'We accept all major credit cards, cash, Apple Pay, and Google Pay.'
+            },
+            {
+              id: 'faq4',
+              question: 'Can I request a specific barber for my service?',
+              answer: 'Absolutely! You can select your preferred barber when booking your appointment.'
+            },
+            {
+              id: 'faq5',
+              question: 'Do you take walk-in appointments?',
+              answer: 'While we welcome walk-ins, availability is subject to our schedule. We recommend booking in advance to ensure you get your preferred time and barber.'
+            }
+          ]);
+        }
+      } catch (error) {
+        console.error('Error loading FAQs:', error);
+        // Use default FAQs in case of error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFAQs();
+  }, []);
   
   const toggleFAQ = (id: string) => {
     setShowFAQ(prev => prev === id ? '' : id);
   };
-  
-  const faqs = [
-    {
-      id: 'faq1',
-      question: 'What happens if I need to cancel my appointment?',
-      answer: 'We understand plans change. We request at least 24 hours notice for cancellations. Late cancellations or no-shows may be subject to a fee for the reserved time.'
-    },
-    {
-      id: 'faq2',
-      question: 'How early should I arrive for my appointment?',
-      answer: 'We recommend arriving 5-10 minutes before your scheduled appointment time to ensure a smooth check-in process.'
-    },
-    {
-      id: 'faq3',
-      question: 'What forms of payment do you accept?',
-      answer: 'We accept all major credit cards, cash, Apple Pay, and Google Pay.'
-    },
-    {
-      id: 'faq4',
-      question: 'Can I request a specific barber for my service?',
-      answer: 'Absolutely! You can select your preferred barber when booking your appointment.'
-    },
-    {
-      id: 'faq5',
-      question: 'Do you take walk-in appointments?',
-      answer: 'While we welcome walk-ins, availability is subject to our schedule. We recommend booking in advance to ensure you get your preferred time and barber.'
-    }
-  ];
 
   return (
     <>
@@ -69,38 +97,39 @@ const Booking = () => {
               <div className="mb-8">
                 <h3 className="text-lg font-semibold mb-3 text-barber-navy">Available Barbers</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {barbers.map((barber) => (
-                    <div key={barber.id} className="text-center">
-                      <div 
-                        className="w-16 h-16 mx-auto rounded-full bg-cover bg-center mb-2"
-                        style={{ backgroundImage: `url(${barber.image})` }}
-                      ></div>
-                      <p className="text-sm font-medium">{barber.name}</p>
-                    </div>
-                  ))}
+                  {/* Barber images are now loaded from BookingForm component which uses real data */}
+                  <p className="col-span-full text-sm text-gray-500">Choose your preferred barber when booking</p>
                 </div>
               </div>
               
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-barber-navy">Booking FAQs</h3>
-                <div className="space-y-4">
-                  {faqs.map((faq) => (
-                    <div key={faq.id} className="border border-gray-200 rounded-md overflow-hidden">
-                      <button 
-                        className="w-full text-left p-4 flex justify-between items-center bg-white hover:bg-gray-50"
-                        onClick={() => toggleFAQ(faq.id)}
-                      >
-                        <span className="font-medium">{faq.question}</span>
-                        <span>{showFAQ === faq.id ? '−' : '+'}</span>
-                      </button>
-                      {showFAQ === faq.id && (
-                        <div className="p-4 bg-gray-50 border-t border-gray-200">
-                          {faq.answer}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                {isLoading ? (
+                  <div className="animate-pulse space-y-4">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="h-20 bg-gray-200 rounded"></div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {faqs.map((faq) => (
+                      <div key={faq.id} className="border border-gray-200 rounded-md overflow-hidden">
+                        <button 
+                          className="w-full text-left p-4 flex justify-between items-center bg-white hover:bg-gray-50"
+                          onClick={() => toggleFAQ(faq.id)}
+                        >
+                          <span className="font-medium">{faq.question}</span>
+                          <span>{showFAQ === faq.id ? '−' : '+'}</span>
+                        </button>
+                        {showFAQ === faq.id && (
+                          <div className="p-4 bg-gray-50 border-t border-gray-200">
+                            {faq.answer}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             
@@ -123,7 +152,7 @@ const Booking = () => {
               </div>
               <h3 className="text-xl font-bold mb-2 text-barber-navy">Contact</h3>
               <p className="text-gray-600">
-                Phone: (123) 456-7890<br />
+                Phone: +90 (216) 555-7890<br />
                 Email: info@elitecuts.com
               </p>
             </div>
@@ -151,9 +180,9 @@ const Booking = () => {
               </div>
               <h3 className="text-xl font-bold mb-2 text-barber-navy">Location</h3>
               <p className="text-gray-600">
-                123 Barber Street<br />
-                New York, NY 10001<br />
-                United States
+                Bağdat Cad. No:105/B<br />
+                Kadıköy, Istanbul<br />
+                Turkey
               </p>
             </div>
           </div>
@@ -161,11 +190,8 @@ const Booking = () => {
       </section>
       
       {/* Map Section */}
-      <section className="h-96 bg-gray-300">
-        {/* Map would be integrated here - placeholder */}
-        <div className="w-full h-full flex items-center justify-center bg-gray-200">
-          <p className="text-gray-600">Map integration would be placed here</p>
-        </div>
+      <section className="h-96 bg-gray-200">
+        <Map />
       </section>
       
       {/* Chatbot */}

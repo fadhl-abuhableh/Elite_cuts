@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,8 +24,9 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
-import { services, barbers } from '@/utils/chatbotData';
+import { fetchServices, fetchBarbers, createAppointment } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { DbService, DbBarber } from '@/lib/supabase';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -44,7 +45,43 @@ const BookingForm = () => {
   const [searchParams] = useSearchParams();
   const initialService = searchParams.get('service');
   const { toast } = useToast();
+  const [services, setServices] = useState<DbService[]>([]);
+  const [barbers, setBarbers] = useState<DbBarber[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [servicesData, barbersData] = await Promise.all([
+          fetchServices(),
+          fetchBarbers()
+        ]);
+        
+        if (servicesData) setServices(servicesData);
+        if (barbersData) setBarbers(barbersData);
+        
+        if (import.meta.env.DEV) {
+          console.log('Booking form data loaded:', {
+            services: servicesData?.length || 0,
+            barbers: barbersData?.length || 0
+          });
+        }
+      } catch (error) {
+        console.error('Error loading booking form data:', error);
+        toast({
+          title: "Failed to load data",
+          description: "We're experiencing technical difficulties. Some options may be limited.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [toast]);
+
   // Generate available dates (next 7 days)
   const availableDates = Array.from({ length: 7 }, (_, i) => {
     const date = new Date();
@@ -95,19 +132,64 @@ const BookingForm = () => {
     },
   });
   
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = async (data: FormValues) => {
     console.log('Booking form submitted:', data);
     
-    // Simulate API call
-    setTimeout(() => {
-      toast({
-        title: "Appointment Booked!",
-        description: `Your appointment with ${barbers.find(b => b.id === data.barber)?.name} for ${services.find(s => s.id === data.service)?.name} has been scheduled for ${data.date} at ${data.time}.`,
-      });
+    try {
+      // Format the appointment date and time
+      const appointmentDate = new Date(`${data.date}T${data.time}`);
       
-      form.reset();
-    }, 1000);
+      const appointmentData = {
+        customer_name: data.name,
+        customer_email: data.email,
+        service_id: data.service,
+        barber_id: data.barber,
+        appointment_time: appointmentDate.toISOString(),
+        notes: data.notes || '',
+      };
+      
+      const result = await createAppointment(appointmentData);
+      
+      if (result.success) {
+        toast({
+          title: "Appointment Booked!",
+          description: `Your appointment has been scheduled for ${data.date} at ${data.time}.`,
+        });
+        
+        form.reset();
+      } else {
+        toast({
+          title: "Booking Failed",
+          description: "There was an error booking your appointment. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error submitting appointment:', error);
+      toast({
+        title: "Booking Failed",
+        description: "There was an error booking your appointment. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
+  
+  if (isLoading) {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="animate-pulse space-y-6">
+          <div className="h-10 bg-gray-200 rounded w-3/4"></div>
+          <div className="grid grid-cols-2 gap-6">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="h-14 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+          <div className="h-24 bg-gray-200 rounded"></div>
+          <div className="h-12 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
@@ -149,7 +231,7 @@ const BookingForm = () => {
                 <FormItem>
                   <FormLabel>Phone Number</FormLabel>
                   <FormControl>
-                    <Input placeholder="(123) 456-7890" {...field} />
+                    <Input placeholder="+90 (555) 123-4567" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
