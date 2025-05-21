@@ -5,9 +5,10 @@ interface QuickSuggestionsProps {
 
 export function QuickSuggestions({ onSuggestionClick }: QuickSuggestionsProps) {
   const suggestions = [
-    { text: "Services?", query: "What services do you offer?" },
-    { text: "Check availability", query: "When is James available tomorrow?" },
-    { text: "Book appointment", query: "How do I book an appointment?" }
+    { text: "Services & pricing", query: "What services do you offer and what are your prices?" },
+    { text: "Barber availability", query: "Is James available tomorrow?" },
+    { text: "Hours & location", query: "What are your hours and where are you located?" },
+    { text: "Current promotions", query: "Do you have any current promotions?" }
   ];
 
   return (

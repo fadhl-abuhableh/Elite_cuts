@@ -57,6 +57,7 @@ export function ChatBot({ className }: ChatBotProps) {
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 bg-barber-gold text-barber-dark rounded-full p-4 shadow-lg hover:bg-amber-500 transition-all duration-300 z-50"
+          aria-label="Open chat assistant"
         >
           <MessageCircle size={24} />
         </button>
@@ -77,6 +78,7 @@ export function ChatBot({ className }: ChatBotProps) {
             <button 
               onClick={() => setIsOpen(false)}
               className="text-white/70 hover:text-white transition-colors"
+              aria-label="Close chat"
             >
               <X size={20} />
             </button>
@@ -84,15 +86,21 @@ export function ChatBot({ className }: ChatBotProps) {
 
           {/* Messages area */}
           <div className="flex-1 p-4 overflow-y-auto">
-            {messages.map((message) => (
-              <ChatMessage
-                key={message.id}
-                id={message.id}
-                sender={message.sender}
-                text={message.text}
-                timestamp={message.timestamp}
-              />
-            ))}
+            {messages.length > 0 ? (
+              messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
+                  id={message.id}
+                  sender={message.sender}
+                  text={message.text}
+                  timestamp={message.timestamp}
+                />
+              ))
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-gray-500">Start a conversation</p>
+              </div>
+            )}
             {isTyping && (
               <div className="bg-gray-100 text-barber-dark rounded-lg p-3 max-w-[80%] animate-pulse">
                 <span>Typing</span>

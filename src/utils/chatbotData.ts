@@ -83,13 +83,17 @@ export const barbers = [
 // Function to load real data from Supabase
 export const loadRealData = async () => {
   try {
-    const [servicesData, barbersData] = await Promise.all([
+    const [servicesData, barbersData, faqsData, promotionsData] = await Promise.all([
       supabase.from('services').select('*'),
-      supabase.from('barbers').select('*').eq('is_active', true)
+      supabase.from('barbers').select('*').eq('is_active', true),
+      supabase.from('faqs').select('*'),
+      supabase.from('promotions').select('*').gte('valid_until', new Date().toISOString())
     ]);
 
     if (servicesData.error) throw servicesData.error;
     if (barbersData.error) throw barbersData.error;
+    if (faqsData.error) throw faqsData.error;
+    if (promotionsData.error) throw promotionsData.error;
 
     // Map the database data to the format our app expects
     const mappedServices = servicesData.data.map((service: DbService) => ({
@@ -112,13 +116,29 @@ export const loadRealData = async () => {
       image: barber.image_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-1.2.1&auto=format&fit=crop&w=334&q=80' // Default image
     }));
 
+    if (import.meta.env.DEV) {
+      console.log('Supabase data loaded:', {
+        services: servicesData.data.length,
+        barbers: barbersData.data.length,
+        faqs: faqsData?.data?.length || 0,
+        promotions: promotionsData?.data?.length || 0
+      });
+    }
+
     return {
       services: mappedServices.length > 0 ? mappedServices : services,
-      barbers: mappedBarbers.length > 0 ? mappedBarbers : barbers
+      barbers: mappedBarbers.length > 0 ? mappedBarbers : barbers,
+      faqs: faqsData?.data || [],
+      promotions: promotionsData?.data || []
     };
   } catch (error) {
     console.error('Error loading data from Supabase:', error);
-    return { services, barbers }; // Return fallback data
+    return { 
+      services, 
+      barbers,
+      faqs: [],
+      promotions: []
+    }; // Return fallback data
   }
 };
 
@@ -167,13 +187,17 @@ function extractExperience(bio: string | null): string | null {
 let initialized = false;
 let cachedServices = [...services];
 let cachedBarbers = [...barbers];
+let cachedFAQs: any[] = [];
+let cachedPromotions: any[] = [];
 
 export const initializeData = async () => {
   if (!initialized) {
     try {
-      const { services: loadedServices, barbers: loadedBarbers } = await loadRealData();
+      const { services: loadedServices, barbers: loadedBarbers, faqs, promotions } = await loadRealData();
       cachedServices = loadedServices;
       cachedBarbers = loadedBarbers;
+      cachedFAQs = faqs;
+      cachedPromotions = promotions;
       initialized = true;
     } catch (error) {
       console.error('Failed to initialize data:', error);
@@ -183,23 +207,29 @@ export const initializeData = async () => {
   
   return {
     services: cachedServices,
-    barbers: cachedBarbers
+    barbers: cachedBarbers,
+    faqs: cachedFAQs,
+    promotions: cachedPromotions
   };
 };
 
 // Export a function to get fresh data when needed
 export const getServicesAndBarbers = async () => {
   try {
-    const { services: loadedServices, barbers: loadedBarbers } = await loadRealData();
+    const { services: loadedServices, barbers: loadedBarbers, faqs, promotions } = await loadRealData();
     return {
       services: loadedServices,
-      barbers: loadedBarbers
+      barbers: loadedBarbers,
+      faqs: faqs,
+      promotions: promotions
     };
   } catch (error) {
     console.error('Failed to get fresh data:', error);
     return {
       services: cachedServices,
-      barbers: cachedBarbers
+      barbers: cachedBarbers,
+      faqs: cachedFAQs,
+      promotions: cachedPromotions
     };
   }
 };

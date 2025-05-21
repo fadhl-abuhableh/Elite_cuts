@@ -12,6 +12,7 @@ import {
   fetchPromotions,
   checkBarberAvailability
 } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 interface Message {
   id: string;
@@ -37,6 +38,7 @@ export function useChatBot() {
   const [faqs, setFaqs] = useState<DbFAQ[] | null>(null);
   const [promotions, setPromotions] = useState<DbPromotion[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [dataInitialized, setDataInitialized] = useState(false);
 
   // Fetch data from Supabase
   useEffect(() => {
@@ -51,12 +53,24 @@ export function useChatBot() {
           fetchPromotions()
         ]);
         
-        setServices(servicesData);
-        setBarbers(barbersData);
-        setFaqs(faqsData);
-        setPromotions(promotionsData);
+        if (servicesData) setServices(servicesData);
+        if (barbersData) setBarbers(barbersData);
+        if (faqsData) setFaqs(faqsData);
+        if (promotionsData) setPromotions(promotionsData);
+        
+        setDataInitialized(true);
+        
+        if (import.meta.env.DEV) {
+          console.log('Chatbot data loaded:', {
+            services: !!servicesData && servicesData.length,
+            barbers: !!barbersData && barbersData.length,
+            faqs: !!faqsData && faqsData.length,
+            promotions: !!promotionsData && promotionsData.length
+          });
+        }
       } catch (error) {
         console.error('Error loading chatbot data:', error);
+        toast.error('Error loading chat assistant data. Some features may be limited.');
       } finally {
         setIsLoading(false);
       }
@@ -92,10 +106,14 @@ export function useChatBot() {
         setMessages((prev) => [...prev, botMessage]);
         setIsTyping(false);
       });
-    }, 1000);
+    }, 800);
   };
 
   const processUserInput = async (text: string): Promise<string> => {
+    if (!dataInitialized) {
+      return "I'm still loading data. Please try again in a moment.";
+    }
+    
     const lowercaseText = text.toLowerCase();
     
     // Check for greetings
@@ -104,78 +122,99 @@ export function useChatBot() {
     }
     
     // Check for service information
-    if (lowercaseText.includes('service') || lowercaseText.includes('haircut') || lowercaseText.includes('price')) {
-      if (services) {
+    if (lowercaseText.includes('service') || 
+        lowercaseText.includes('haircut') || 
+        lowercaseText.includes('price') || 
+        lowercaseText.includes('cost') ||
+        lowercaseText.includes('trim') ||
+        lowercaseText.includes('shave')) {
+      
+      if (services && services.length > 0) {
+        // Try to find a specific service match
         const service = findServiceFromSupabase(text, services);
         
         if (service) {
-          return `${service.name} costs $${service.price} and takes approximately ${service.duration_minutes} minutes. Would you like to book this service?`;
-        } else if (lowercaseText.includes('service')) {
+          return `${service.name} costs $${service.price} and takes approximately ${service.duration_minutes} minutes. ${service.description || ''}. Would you like to book this service?`;
+        } else if (lowercaseText.includes('service') || lowercaseText.includes('offer')) {
           const serviceNames = services.map(s => s.name).join(', ');
-          return `We offer a variety of services including ${serviceNames}. You can view all our services on our Services page. Would you like me to tell you more about a specific service?`;
+          return `We offer a variety of services including ${serviceNames}. Our prices range from $${Math.min(...services.map(s => s.price))} to $${Math.max(...services.map(s => s.price))}. You can view all our services on our Services page. Would you like me to tell you more about a specific service?`;
         }
+      } else {
+        return "I'm having trouble accessing our service information. Please check our Services page for details, or contact us directly.";
+      }
+    }
+    
+    // Check for barber information
+    if (lowercaseText.includes('barber') || 
+        lowercaseText.includes('stylist') || 
+        lowercaseText.includes('who') && (lowercaseText.includes('cut') || lowercaseText.includes('work'))) {
+      
+      if (barbers && barbers.length > 0) {
+        // Check if asking about a specific barber
+        const barberName = extractBarberName(text, barbers);
+        
+        if (barberName) {
+          const barber = barbers.find(b => 
+            b.name.toLowerCase().includes(barberName.toLowerCase())
+          );
+          
+          if (barber) {
+            return `${barber.name} is one of our skilled barbers. ${barber.bio || ''}`;
+          }
+        }
+        
+        // General barber information
+        return `We have ${barbers.length} talented barbers on our team: ${barbers.map(b => b.name).join(', ')}. Would you like to know more about any of them?`;
       }
     }
     
     // Check for barber availability
-    if (lowercaseText.includes('available') || lowercaseText.includes('book')) {
-      const matches = text.match(/(\w+)\s+(?:on|for|this|next)?\s*(\w+day|tomorrow|today)/i);
+    if (lowercaseText.includes('available') || 
+        lowercaseText.includes('book') || 
+        lowercaseText.includes('schedule') || 
+        lowercaseText.includes('appointment') || 
+        lowercaseText.includes('time')) {
       
-      if (matches && barbers) {
-        const barberName = matches[1];
-        const day = matches[2];
-        
-        // Find the barber in our Supabase data
+      // Look for patterns like "Is [name] available on [day]?" or "Book with [name]"
+      const barberMatch = extractBarberName(text, barbers || []);
+      const dateMatch = extractDateReference(text);
+      
+      if (barberMatch && dateMatch && barbers) {
         const barber = barbers.find(b => 
-          b.name.toLowerCase().includes(barberName.toLowerCase())
+          b.name.toLowerCase().includes(barberMatch.toLowerCase())
         );
         
         if (!barber) {
-          return `I couldn't find a barber named ${barberName}. Our available barbers are: ${barbers.map(b => b.name).join(', ')}. Would you like to check availability for one of them?`;
-        }
-        
-        // Create a date object for the requested day
-        let date = new Date();
-        if (day.toLowerCase() === 'tomorrow') {
-          date.setDate(date.getDate() + 1);
-        } else if (day.toLowerCase() !== 'today') {
-          // Handle specific days of the week
-          const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-          const today = date.getDay();
-          const targetDay = days.findIndex(d => d.toLowerCase() === day.toLowerCase());
-          
-          if (targetDay !== -1) {
-            let daysToAdd = targetDay - today;
-            if (daysToAdd <= 0) daysToAdd += 7; // If the day has passed this week, look at next week
-            date.setDate(date.getDate() + daysToAdd);
-          }
+          return `I couldn't find a barber named ${barberMatch}. Our available barbers are: ${barbers.map(b => b.name).join(', ')}. Would you like to check availability for one of them?`;
         }
         
         try {
-          const availability = await checkBarberAvailability(barber.id, date.toISOString().split('T')[0]);
+          const availability = await checkBarberAvailability(barber.id, dateMatch.toISOString().split('T')[0]);
           
           if (availability) {
             const availableSlots = availability.filter(slot => slot.available);
             
             if (availableSlots.length > 0) {
               const slotsList = availableSlots.slice(0, 3).map(slot => slot.time).join(', ');
-              return `Yes, there are ${availableSlots.length} available slots for ${barber.name} on ${date.toLocaleDateString()}. Some available times include: ${slotsList}. Would you like to book an appointment?`;
+              return `Yes, ${barber.name} has ${availableSlots.length} available slots on ${dateMatch.toLocaleDateString()}. Some available times include: ${slotsList}. Would you like to book an appointment?`;
             } else {
-              return `I'm sorry, it looks like ${barber.name} is fully booked on ${date.toLocaleDateString()}. Would you like to check another date or a different barber?`;
+              return `I'm sorry, it looks like ${barber.name} is fully booked on ${dateMatch.toLocaleDateString()}. Would you like to check another date or a different barber?`;
             }
           }
         } catch (error) {
           console.error("Error checking barber availability:", error);
         }
         
-        return `I'm having trouble checking availability right now. Please try again later or contact us directly.`;
-      } else {
-        return `To check availability, please specify a barber name and day. For example, "Is James available tomorrow?" or "When is Michael free on Friday?"`;
+        return `I'm having trouble checking availability right now. Please try again later or contact us directly at (123) 456-7890.`;
+      } else if ((lowercaseText.includes('available') || lowercaseText.includes('book')) && (!barberMatch || !dateMatch)) {
+        return `To check availability, please specify both a barber name and day. For example, "Is James available tomorrow?" or "When is Michael free on Friday?"`;
+      } else if (lowercaseText.includes('appointment') || lowercaseText.includes('book')) {
+        return `You can book an appointment through our booking page, or I can help you get started. What service would you like to book, and do you have a preferred barber and time?`;
       }
     }
     
     // Check for FAQ information
-    if (faqs) {
+    if (faqs && faqs.length > 0) {
       const faq = findFAQFromSupabase(text, faqs);
       if (faq) {
         return faq.answer;
@@ -183,8 +222,13 @@ export function useChatBot() {
     }
     
     // Check for promotion information
-    if (lowercaseText.includes('discount') || lowercaseText.includes('offer') || lowercaseText.includes('promo') || lowercaseText.includes('deal')) {
-      if (promotions) {
+    if (lowercaseText.includes('discount') || 
+        lowercaseText.includes('offer') || 
+        lowercaseText.includes('promo') || 
+        lowercaseText.includes('deal') || 
+        lowercaseText.includes('special')) {
+      
+      if (promotions && promotions.length > 0) {
         const promotion = findPromotionFromSupabase(text, promotions);
         
         if (promotion) {
@@ -193,22 +237,130 @@ export function useChatBot() {
             response += ` Valid until ${new Date(promotion.valid_until).toLocaleDateString()}.`;
           }
           return response;
-        } else if (promotions.length > 0) {
+        } else {
           const promoList = promotions.map(p => p.title).join(', ');
           return `We have several ongoing promotions, including ${promoList}. Would you like to know more about any of these?`;
         }
       }
       
-      return `We have several ongoing promotions. Please check our website for the latest deals or ask me about a specific promotion.`;
+      return `We have several promotions throughout the year. Please check our website for the latest deals or ask me about a specific promotion.`;
     }
     
-    // Check for booking request
-    if (lowercaseText.includes('appointment') || lowercaseText.includes('book') || lowercaseText.includes('schedule')) {
-      return `You can book an appointment through our booking page, or I can help you get started. What service would you like to book, and do you have a preferred barber and time?`;
+    // Check for location or hours information
+    if (lowercaseText.includes('where') || 
+        lowercaseText.includes('location') || 
+        lowercaseText.includes('address') ||
+        lowercaseText.includes('situated')) {
+      return "We're located at 123 Barber Street, New York, NY 10001. You can find directions on our website or contact us at (123) 456-7890 for more information.";
+    }
+    
+    if (lowercaseText.includes('hour') || 
+        lowercaseText.includes('open') || 
+        lowercaseText.includes('close') || 
+        lowercaseText.includes('when') && lowercaseText.includes('open')) {
+      return "Our hours are:\nMonday-Friday: 9:00 AM - 7:00 PM\nSaturday: 10:00 AM - 6:00 PM\nSunday: 10:00 AM - 4:00 PM";
     }
     
     // Default response for unrecognized inputs
     return "I'm not sure I understand. I can help with service information, barber availability, booking appointments, or answering frequently asked questions. How can I assist you?";
+  };
+  
+  // Helper function to extract barber name from text
+  const extractBarberName = (text: string, barbers: DbBarber[]): string | null => {
+    const lowercaseText = text.toLowerCase();
+    
+    // Check for direct mentions of barber names
+    for (const barber of barbers) {
+      const barberFirstName = barber.name.split(' ')[0].toLowerCase();
+      const barberFullName = barber.name.toLowerCase();
+      
+      if (lowercaseText.includes(barberFullName) || lowercaseText.includes(barberFirstName)) {
+        return barber.name;
+      }
+    }
+    
+    // Try to match patterns like "book with [name]" or "is [name] available"
+    const bookWithMatch = text.match(/(?:book|appointment|schedule)\s+(?:with|for)\s+(\w+)/i);
+    if (bookWithMatch && bookWithMatch[1]) {
+      const potentialName = bookWithMatch[1];
+      // Check if this partial name matches any barber
+      for (const barber of barbers) {
+        if (barber.name.toLowerCase().includes(potentialName.toLowerCase())) {
+          return barber.name;
+        }
+      }
+    }
+    
+    const isAvailableMatch = text.match(/is\s+(\w+)\s+available/i);
+    if (isAvailableMatch && isAvailableMatch[1]) {
+      const potentialName = isAvailableMatch[1];
+      // Check if this partial name matches any barber
+      for (const barber of barbers) {
+        if (barber.name.toLowerCase().includes(potentialName.toLowerCase())) {
+          return barber.name;
+        }
+      }
+    }
+    
+    return null;
+  };
+  
+  // Helper function to extract date reference
+  const extractDateReference = (text: string): Date | null => {
+    const lowercaseText = text.toLowerCase();
+    
+    // Handle "tomorrow"
+    if (lowercaseText.includes('tomorrow')) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow;
+    }
+    
+    // Handle "today"
+    if (lowercaseText.includes('today')) {
+      return new Date();
+    }
+    
+    // Handle day names (next occurrence)
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    for (let i = 0; i < days.length; i++) {
+      if (lowercaseText.includes(days[i])) {
+        const today = new Date();
+        const dayDiff = (i - today.getDay() + 7) % 7;
+        const targetDate = new Date();
+        targetDate.setDate(today.getDate() + (dayDiff === 0 ? 7 : dayDiff)); // Next occurrence
+        return targetDate;
+      }
+    }
+    
+    // Handle specific dates like "May 15" or "15th May"
+    const dateMatch = text.match(/(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?/i);
+    
+    if (dateMatch) {
+      const currentYear = new Date().getFullYear();
+      let day, month;
+      
+      if (dateMatch[1] && dateMatch[2]) {
+        // Format: "15th May"
+        day = parseInt(dateMatch[1]);
+        month = days.indexOf(dateMatch[2].toLowerCase());
+      } else {
+        // Format: "May 15"
+        const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+        month = monthNames.findIndex(m => dateMatch[0].toLowerCase().includes(m));
+        day = parseInt(dateMatch[3] || dateMatch[0].match(/\d{1,2}/)[0]);
+      }
+      
+      if (!isNaN(day) && month !== -1) {
+        const specificDate = new Date(currentYear, month, day);
+        return specificDate;
+      }
+    }
+    
+    // Default to tomorrow if no specific date is found
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
   };
 
   const findServiceFromSupabase = (query: string, services: DbService[]): DbService | null => {
@@ -223,22 +375,80 @@ export function useChatBot() {
       }
     }
     
+    // Try to match common service keywords
+    if (normalizedQuery.includes('haircut') || normalizedQuery.includes('cut')) {
+      return services.find(s => 
+        s.name.toLowerCase().includes('haircut') || 
+        s.name.toLowerCase().includes('cut')
+      ) || null;
+    }
+    
+    if (normalizedQuery.includes('beard') || normalizedQuery.includes('trim')) {
+      return services.find(s => 
+        s.name.toLowerCase().includes('beard') || 
+        s.name.toLowerCase().includes('trim')
+      ) || null;
+    }
+    
+    if (normalizedQuery.includes('shave')) {
+      return services.find(s => 
+        s.name.toLowerCase().includes('shave')
+      ) || null;
+    }
+    
     return null;
   };
 
   const findFAQFromSupabase = (query: string, faqs: DbFAQ[]): DbFAQ | null => {
     const normalizedQuery = query.toLowerCase();
     
+    // First try to match keywords with question
     for (const faq of faqs) {
       if (
-        faq.question.toLowerCase().includes(normalizedQuery) ||
-        faq.answer.toLowerCase().includes(normalizedQuery)
+        keywordMatch(faq.question.toLowerCase(), normalizedQuery) ||
+        keywordMatch(faq.answer.toLowerCase(), normalizedQuery)
       ) {
         return faq;
       }
     }
     
+    // If no direct keyword match, try checking for question patterns
+    for (const faq of faqs) {
+      // Convert FAQ question to lowercase for comparison
+      const lowercaseQuestion = faq.question.toLowerCase();
+      
+      // Check for question keywords
+      const questionKeywords = extractKeywords(lowercaseQuestion);
+      const userKeywords = extractKeywords(normalizedQuery);
+      
+      // If there's significant keyword overlap, this is probably the right FAQ
+      const overlap = questionKeywords.filter(keyword => userKeywords.includes(keyword));
+      if (overlap.length >= Math.min(2, Math.floor(questionKeywords.length / 2))) {
+        return faq;
+      }
+    }
+    
     return null;
+  };
+  
+  // Helper function to check for keyword matches
+  const keywordMatch = (source: string, query: string): boolean => {
+    // Extract important words from the query (3+ letters)
+    const queryWords = query
+      .split(/\s+/)
+      .filter(word => word.length >= 3 && !['how', 'what', 'when', 'where', 'why', 'who', 'the', 'and', 'for', 'are', 'you', 'can', 'your'].includes(word));
+    
+    // Check if significant keywords from the query appear in the source
+    return queryWords.some(word => source.includes(word));
+  };
+  
+  // Extract meaningful keywords from text
+  const extractKeywords = (text: string): string[] => {
+    const stopWords = ['how', 'what', 'when', 'where', 'why', 'who', 'the', 'and', 'for', 'are', 'you', 'can', 'your', 'that', 'this', 'with', 'have'];
+    return text
+      .split(/\s+/)
+      .map(word => word.replace(/[.,?!;:]/, '').toLowerCase())
+      .filter(word => word.length >= 3 && !stopWords.includes(word));
   };
 
   const findPromotionFromSupabase = (query: string, promotions: DbPromotion[]): DbPromotion | null => {
