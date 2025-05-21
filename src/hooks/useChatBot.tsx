@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -283,10 +282,9 @@ Is this information correct? Please respond with "yes" to confirm or "no" to res
             active: false
           });
           
-          // Simulate booking success (in a real app, you'd make an API call here)
+          // Fixing the toast implementation here
           setTimeout(() => {
-            toast({
-              title: "Appointment Booked!",
+            toast("Appointment Booked!", {
               description: `Your appointment with ${selectedBarber?.name} for ${selectedService?.name} has been scheduled.`,
             });
           }, 1000);
