@@ -1,15 +1,51 @@
-
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { fetchLocations } from '@/lib/supabase';
 
 export const Map = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const [location, setLocation] = useState({
+    name: 'EliteCuts',
+    address: 'Bağdat Cad. No:105/B',
+    city: 'Kadıköy',
+    state: 'Istanbul',
+    country: 'Turkey',
+    // Bağdat Caddesi coordinates (approximate)
+    longitude: 29.0587,
+    latitude: 40.9625
+  });
+  const [mapError, setMapError] = useState<string | null>(null);
   
-  // Bağdat Caddesi coordinates (approximate)
-  const longitude = 29.0587;
-  const latitude = 40.9625;
+  // Fetch location from database
+  useEffect(() => {
+    const getLocationData = async () => {
+      try {
+        const locations = await fetchLocations();
+        if (locations && locations.length > 0) {
+          const mainLocation = locations[0];
+          
+          // Only update if we have actual coordinates from DB
+          // Here we're assuming the DB has these fields, otherwise we keep defaults
+          setLocation(prev => ({
+            name: mainLocation.name || prev.name,
+            address: mainLocation.address || prev.address,
+            city: mainLocation.city || prev.city,
+            state: mainLocation.state || prev.state,
+            country: mainLocation.country || prev.country,
+            // Keep default coordinates if not provided in the DB
+            longitude: prev.longitude,
+            latitude: prev.latitude
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch location data:', error);
+      }
+    };
+    
+    getLocationData();
+  }, []);
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -17,52 +53,83 @@ export const Map = () => {
     // Initialize map with Mapbox public token
     mapboxgl.accessToken = 'pk.eyJ1IjoibG92YWJsZS1haS1kZXYiLCJhIjoiY2xweWIxdzc3MGkxcjJqbzVrdzZrdngyNCJ9.fsywR9wMZ_K-OmvqYpKJSg';
     
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v11',
-      center: [longitude, latitude], // Istanbul - Bağdat Caddesi
-      zoom: 14
-    });
-    
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-    
-    // Add marker for the barbershop location
-    const marker = new mapboxgl.Marker()
-      .setLngLat([longitude, latitude])
-      .setPopup(
-        new mapboxgl.Popup({ offset: 25 })
-          .setHTML(
-            `<h3 class="font-bold">EliteCuts</h3>
-            <p>Bağdat Cad. No:105/B<br>Kadıköy, Istanbul</p>`
-          )
-      )
-      .addTo(map.current);
-    
-    // Open popup by default
-    marker.togglePopup();
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [location.longitude, location.latitude],
+        zoom: 14
+      });
+      
+      // Add navigation controls
+      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      
+      // Add marker for the barbershop location
+      const marker = new mapboxgl.Marker()
+        .setLngLat([location.longitude, location.latitude])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 25 })
+            .setHTML(
+              `<h3 class="font-bold">${location.name}</h3>
+              <p>${location.address}<br>${location.city}, ${location.state}</p>`
+            )
+        )
+        .addTo(map.current);
+      
+      // Open popup by default
+      marker.togglePopup();
+    } catch (error) {
+      console.error('Error initializing map:', error);
+      setMapError('Unable to load map. Please try again later.');
+    }
 
     // Clean up on unmount
     return () => {
       map.current?.remove();
     };
-  }, []);
+  }, [location]);
+
+  // Create a Google Maps URL for the location
+  const googleMapsUrl = encodeURI(`https://www.google.com/maps/search/?api=1&query=${location.address} ${location.city} ${location.state}`);
 
   return (
     <div className="h-full w-full relative">
-      <div ref={mapContainer} className="absolute inset-0" />
-      <div className="absolute top-4 left-4 bg-white p-3 rounded-lg shadow-md z-10">
-        <h3 className="font-bold text-barber-navy">Our Location</h3>
-        <p className="text-sm">Bağdat Cad. No:105/B, Kadıköy, Istanbul</p>
-        <a 
-          href="https://www.google.com/maps/search/?api=1&query=Ba%C4%9Fdat+Cad.+No:105%2FB+Kad%C4%B1k%C3%B6y+Istanbul" 
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-blue-600 hover:underline"
-        >
-          Open in Google Maps
-        </a>
-      </div>
+      {mapError ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <div className="text-center p-4">
+            <p className="text-red-500 mb-2">{mapError}</p>
+            <p>You can still find us at:</p>
+            <p className="font-bold">{location.address}</p>
+            <p>{location.city}, {location.state}</p>
+            <a 
+              href={googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 text-blue-600 hover:underline block"
+            >
+              Open in Google Maps
+            </a>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div ref={mapContainer} className="absolute inset-0" />
+          <div className="absolute top-4 left-4 bg-white p-3 rounded-lg shadow-md z-10">
+            <h3 className="font-bold text-barber-navy">{location.name}</h3>
+            <p className="text-sm">{location.address}, {location.city}, {location.state}</p>
+            <a 
+              href={googleMapsUrl} 
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Open in Google Maps
+            </a>
+          </div>
+        </>
+      )}
     </div>
   );
 };
+
+export default Map;

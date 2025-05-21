@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // Hard-coded Supabase credentials as fallback
@@ -61,6 +62,27 @@ export interface DbPromotion {
   valid_until: string;
 }
 
+// New interfaces for location and working hours
+export interface DbLocation {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  phone: string;
+  email: string;
+}
+
+export interface DbWorkingHours {
+  id: string;
+  day_of_week: string;
+  open_time: string;
+  close_time: string;
+  is_closed: boolean;
+}
+
 // Helper functions for database operations
 export const fetchServices = async () => {
   const { data, error } = await supabase
@@ -114,6 +136,35 @@ export const fetchPromotions = async () => {
   }
   
   return data as DbPromotion[];
+};
+
+// New function to fetch location data
+export const fetchLocations = async () => {
+  const { data, error } = await supabase
+    .from('barbershop_location')
+    .select('*');
+  
+  if (error) {
+    console.error('Error fetching locations:', error);
+    return null;
+  }
+  
+  return data as DbLocation[];
+};
+
+// New function to fetch working hours
+export const fetchWorkingHours = async () => {
+  const { data, error } = await supabase
+    .from('working_hours')
+    .select('*')
+    .order('id');
+  
+  if (error) {
+    console.error('Error fetching working hours:', error);
+    return null;
+  }
+  
+  return data as DbWorkingHours[];
 };
 
 export const createAppointment = async (appointment: Omit<DbAppointment, 'id' | 'created_at'>) => {

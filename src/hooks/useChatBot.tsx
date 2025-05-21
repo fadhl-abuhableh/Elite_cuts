@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -5,10 +6,14 @@ import {
   DbBarber, 
   DbFAQ, 
   DbPromotion,
+  DbLocation,
+  DbWorkingHours,
   fetchServices,
   fetchBarbers,
   fetchFAQs,
   fetchPromotions,
+  fetchLocations,
+  fetchWorkingHours,
   checkBarberAvailability,
   createAppointment
 } from '@/lib/supabase';
@@ -52,6 +57,9 @@ export function useChatBot() {
   const [barbers, setBarbers] = useState<DbBarber[] | null>(null);
   const [faqs, setFaqs] = useState<DbFAQ[] | null>(null);
   const [promotions, setPromotions] = useState<DbPromotion[] | null>(null);
+  // New state variables for location and hours
+  const [locations, setLocations] = useState<DbLocation[] | null>(null);
+  const [workingHours, setWorkingHours] = useState<DbWorkingHours[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dataInitialized, setDataInitialized] = useState(false);
   const [bookingState, setBookingState] = useState<BookingState>({
@@ -67,18 +75,29 @@ export function useChatBot() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        // Fetch all needed data in parallel
-        const [servicesData, barbersData, faqsData, promotionsData] = await Promise.all([
+        // Fetch all needed data in parallel including location and hours
+        const [
+          servicesData, 
+          barbersData, 
+          faqsData, 
+          promotionsData,
+          locationsData,
+          hoursData
+        ] = await Promise.all([
           fetchServices(),
           fetchBarbers(),
           fetchFAQs(),
-          fetchPromotions()
+          fetchPromotions(),
+          fetchLocations(),
+          fetchWorkingHours()
         ]);
         
         if (servicesData) setServices(servicesData);
         if (barbersData) setBarbers(barbersData);
         if (faqsData) setFaqs(faqsData);
         if (promotionsData) setPromotions(promotionsData);
+        if (locationsData) setLocations(locationsData);
+        if (hoursData) setWorkingHours(hoursData);
         
         setDataInitialized(true);
         
@@ -87,7 +106,9 @@ export function useChatBot() {
             services: !!servicesData && servicesData.length,
             barbers: !!barbersData && barbersData.length,
             faqs: !!faqsData && faqsData.length,
-            promotions: !!promotionsData && promotionsData.length
+            promotions: !!promotionsData && promotionsData.length,
+            locations: !!locationsData && locationsData.length,
+            hours: !!hoursData && hoursData.length
           });
         }
       } catch (error) {
@@ -405,6 +426,69 @@ Is this information correct? Please respond with "yes" to confirm or "no" to res
       }
     }
     
+    // IMPROVED: Check for location information
+    if (lowercaseText.includes('where') || 
+        lowercaseText.includes('location') || 
+        lowercaseText.includes('address') ||
+        lowercaseText.includes('situated')) {
+      
+      if (locations && locations.length > 0) {
+        const location = locations[0]; // Get the primary location
+        return `We're located at ${location.address}, ${location.city}, ${location.state} ${location.postal_code}, ${location.country}. You can reach us at ${location.phone} or email us at ${location.email}.`;
+      } else {
+        // Fallback to hardcoded info
+        return "We're located at Bağdat Cad. No:105/B, Kadıköy, Istanbul, Turkey. You can find directions on our website or contact us at (216) 555-7890 for more information.";
+      }
+    }
+    
+    // IMPROVED: Check for hours information
+    if (lowercaseText.includes('hour') || 
+        lowercaseText.includes('open') || 
+        lowercaseText.includes('close') || 
+        (lowercaseText.includes('when') && lowercaseText.includes('open'))) {
+      
+      if (workingHours && workingHours.length > 0) {
+        // Format the hours information nicely
+        const formattedHours = workingHours.map(hour => {
+          if (hour.is_closed) {
+            return `${hour.day_of_week}: Closed`;
+          } else {
+            return `${hour.day_of_week}: ${hour.open_time} - ${hour.close_time}`;
+          }
+        }).join('\n');
+        
+        return `Our hours are:\n${formattedHours}`;
+      } else {
+        // Fallback to hardcoded hours
+        return "Our hours are:\nMonday-Friday: 9:00 AM - 7:00 PM\nSaturday: 10:00 AM - 6:00 PM\nSunday: 10:00 AM - 4:00 PM";
+      }
+    }
+    
+    // IMPROVED: Check for promotions
+    if (lowercaseText.includes('discount') || 
+        lowercaseText.includes('offer') || 
+        lowercaseText.includes('promo') || 
+        lowercaseText.includes('deal') || 
+        lowercaseText.includes('special')) {
+      
+      if (promotions && promotions.length > 0) {
+        const promotion = findPromotionFromSupabase(text, promotions);
+        
+        if (promotion) {
+          let response = `${promotion.title}: ${promotion.details}`;
+          if (promotion.valid_until) {
+            response += ` Valid until ${new Date(promotion.valid_until).toLocaleDateString()}.`;
+          }
+          return response;
+        } else {
+          const promoList = promotions.map(p => p.title).join(', ');
+          return `We have several ongoing promotions, including ${promoList}. Would you like to know more about any of these?`;
+        }
+      }
+      
+      return `We have several promotions throughout the year. Please check our website for the latest deals or ask me about a specific promotion.`;
+    }
+    
     // Check for barber availability
     if (lowercaseText.includes('available') || lowercaseText.includes('free')) {
       
@@ -448,46 +532,6 @@ Is this information correct? Please respond with "yes" to confirm or "no" to res
       if (faq) {
         return faq.answer;
       }
-    }
-    
-    // Check for promotion information
-    if (lowercaseText.includes('discount') || 
-        lowercaseText.includes('offer') || 
-        lowercaseText.includes('promo') || 
-        lowercaseText.includes('deal') || 
-        lowercaseText.includes('special')) {
-      
-      if (promotions && promotions.length > 0) {
-        const promotion = findPromotionFromSupabase(text, promotions);
-        
-        if (promotion) {
-          let response = `${promotion.title}: ${promotion.details}`;
-          if (promotion.valid_until) {
-            response += ` Valid until ${new Date(promotion.valid_until).toLocaleDateString()}.`;
-          }
-          return response;
-        } else {
-          const promoList = promotions.map(p => p.title).join(', ');
-          return `We have several ongoing promotions, including ${promoList}. Would you like to know more about any of these?`;
-        }
-      }
-      
-      return `We have several promotions throughout the year. Please check our website for the latest deals or ask me about a specific promotion.`;
-    }
-    
-    // Check for location or hours information
-    if (lowercaseText.includes('where') || 
-        lowercaseText.includes('location') || 
-        lowercaseText.includes('address') ||
-        lowercaseText.includes('situated')) {
-      return "We're located at 123 Barber Street, New York, NY 10001. You can find directions on our website or contact us at (123) 456-7890 for more information.";
-    }
-    
-    if (lowercaseText.includes('hour') || 
-        lowercaseText.includes('open') || 
-        lowercaseText.includes('close') || 
-        (lowercaseText.includes('when') && lowercaseText.includes('open'))) {
-      return "Our hours are:\nMonday-Friday: 9:00 AM - 7:00 PM\nSaturday: 10:00 AM - 6:00 PM\nSunday: 10:00 AM - 4:00 PM";
     }
     
     // Check for parking

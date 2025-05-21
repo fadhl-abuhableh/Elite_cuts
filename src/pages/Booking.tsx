@@ -2,28 +2,47 @@
 import { useState, useEffect } from 'react';
 import { ChatBot } from '@/components/ui/ChatBot';
 import BookingForm from '@/components/BookingForm';
-import { fetchFAQs } from '@/lib/supabase';
+import { fetchFAQs, fetchLocations, fetchWorkingHours } from '@/lib/supabase';
 import { Map } from '@/components/Map';
 
 const Booking = () => {
   const [showFAQ, setShowFAQ] = useState<string>('');
   const [faqs, setFaqs] = useState<{id: string, question: string, answer: string}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [location, setLocation] = useState<{
+    address: string;
+    city: string;
+    state: string;
+    phone: string;
+    email: string;
+  } | null>(null);
+  const [hours, setHours] = useState<{
+    day_of_week: string;
+    open_time: string;
+    close_time: string;
+    is_closed: boolean;
+  }[]>([]);
   
   useEffect(() => {
-    const loadFAQs = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       try {
-        const dbFaqs = await fetchFAQs();
+        // Fetch FAQs, location and hours data
+        const [dbFaqs, locationsData, hoursData] = await Promise.all([
+          fetchFAQs(),
+          fetchLocations(),
+          fetchWorkingHours()
+        ]);
+        
+        // Handle FAQs
         if (dbFaqs && dbFaqs.length > 0) {
-          // Use FAQs from database
           setFaqs(dbFaqs.map(faq => ({
             id: faq.id,
             question: faq.question,
             answer: faq.answer
           })));
         } else {
-          // Fallback to default FAQs if database fetch fails
+          // Fallback to default FAQs
           setFaqs([
             {
               id: 'faq1',
@@ -52,19 +71,55 @@ const Booking = () => {
             }
           ]);
         }
+        
+        // Handle location data
+        if (locationsData && locationsData.length > 0) {
+          const mainLocation = locationsData[0];
+          setLocation({
+            address: mainLocation.address,
+            city: mainLocation.city,
+            state: mainLocation.state,
+            phone: mainLocation.phone,
+            email: mainLocation.email
+          });
+        }
+        
+        // Handle hours data
+        if (hoursData && hoursData.length > 0) {
+          setHours(hoursData.map(hour => ({
+            day_of_week: hour.day_of_week,
+            open_time: hour.open_time,
+            close_time: hour.close_time,
+            is_closed: hour.is_closed
+          })));
+        }
+        
       } catch (error) {
-        console.error('Error loading FAQs:', error);
-        // Use default FAQs in case of error
+        console.error('Error loading data:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadFAQs();
+    loadData();
   }, []);
   
   const toggleFAQ = (id: string) => {
     setShowFAQ(prev => prev === id ? '' : id);
+  };
+
+  // Format hours for display
+  const formatHours = () => {
+    if (!hours || hours.length === 0) {
+      return "Mon-Fri: 9:00 AM - 7:00 PM\nSaturday: 10:00 AM - 6:00 PM\nSunday: 10:00 AM - 4:00 PM";
+    }
+    
+    return hours.map(hour => {
+      if (hour.is_closed) {
+        return `${hour.day_of_week}: Closed`;
+      }
+      return `${hour.day_of_week}: ${hour.open_time} - ${hour.close_time}`;
+    }).join('\n');
   };
 
   return (
@@ -152,8 +207,8 @@ const Booking = () => {
               </div>
               <h3 className="text-xl font-bold mb-2 text-barber-navy">Contact</h3>
               <p className="text-gray-600">
-                Phone: +90 (216) 555-7890<br />
-                Email: info@elitecuts.com
+                Phone: {location?.phone || '+90 (216) 555-7890'}<br />
+                Email: {location?.email || 'info@elitecuts.com'}
               </p>
             </div>
             
@@ -164,10 +219,8 @@ const Booking = () => {
                 </svg>
               </div>
               <h3 className="text-xl font-bold mb-2 text-barber-navy">Hours</h3>
-              <p className="text-gray-600">
-                Mon-Fri: 9:00 AM - 7:00 PM<br />
-                Saturday: 10:00 AM - 6:00 PM<br />
-                Sunday: 10:00 AM - 4:00 PM
+              <p className="text-gray-600 whitespace-pre-line">
+                {formatHours()}
               </p>
             </div>
             
@@ -180,8 +233,8 @@ const Booking = () => {
               </div>
               <h3 className="text-xl font-bold mb-2 text-barber-navy">Location</h3>
               <p className="text-gray-600">
-                Bağdat Cad. No:105/B<br />
-                Kadıköy, Istanbul<br />
+                {location?.address || 'Bağdat Cad. No:105/B'}<br />
+                {location?.city || 'Kadıköy'}, {location?.state || 'Istanbul'}<br />
                 Turkey
               </p>
             </div>
