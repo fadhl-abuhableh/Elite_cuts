@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 // Hard-coded Supabase credentials as fallback
@@ -44,6 +43,9 @@ export interface DbAppointment {
   service_id: string;
   barber_id: string;
   appointment_time: string;
+  date: string;
+  start_time: string;
+  duration_minutes: number;
   notes: string;
   created_at: string;
 }
@@ -81,6 +83,112 @@ export interface DbWorkingHours {
   open_time: string;
   close_time: string;
   is_closed: boolean;
+}
+
+// New interfaces for the additional tables
+export interface DbBarberSpecialization {
+  id: string;
+  barber_id: string;
+  specialization: string;
+  expertise_level: 'Beginner' | 'Intermediate' | 'Expert';
+  created_at: string;
+}
+
+export interface DbBarberAvailability {
+  id: string;
+  barber_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  is_available: boolean;
+  is_emergency_slot: boolean;
+  created_at: string;
+}
+
+export interface DbCustomerPreference {
+  id: string;
+  customer_email: string;
+  preferred_barber_id: string;
+  preferred_style: string;
+  preferred_time_slot: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbProduct {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  stock_quantity: number;
+  is_available: boolean;
+  created_at: string;
+}
+
+export interface DbGiftCard {
+  id: string;
+  card_number: string;
+  amount: number;
+  is_active: boolean;
+  issued_date: string;
+  expiry_date: string;
+  redeemed_amount: number;
+  created_at: string;
+}
+
+export interface DbGroupBooking {
+  id: string;
+  group_leader_email: string;
+  group_size: number;
+  preferred_date: string;
+  preferred_time_slot: string;
+  status: 'Pending' | 'Confirmed' | 'Cancelled';
+  special_requests: string;
+  created_at: string;
+}
+
+export interface DbWaitlist {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  service_id: string;
+  preferred_barber_id: string;
+  waitlist_time: string;
+  estimated_wait_time: number;
+  status: 'Waiting' | 'Notified' | 'Seated' | 'Cancelled';
+  created_at: string;
+}
+
+export interface DbBarberRating {
+  id: string;
+  barber_id: string;
+  customer_email: string;
+  rating: number;
+  review: string;
+  style_category: string;
+  created_at: string;
+}
+
+export interface DbStyleCategory {
+  id: string;
+  name: string;
+  description: string;
+  difficulty_level: 'Easy' | 'Medium' | 'Hard';
+  maintenance_level: 'Low' | 'Medium' | 'High';
+  created_at: string;
+}
+
+export interface DbEmergencySlot {
+  id: string;
+  barber_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  is_available: boolean;
+  priority_level: number;
+  created_at: string;
 }
 
 // Helper functions for database operations
@@ -141,7 +249,7 @@ export const fetchPromotions = async () => {
 // New function to fetch location data
 export const fetchLocations = async () => {
   const { data, error } = await supabase
-    .from('barbershop_location')
+    .from('barbershop_locations')
     .select('*');
   
   if (error) {
@@ -168,13 +276,53 @@ export const fetchWorkingHours = async () => {
 };
 
 export const createAppointment = async (appointment: Omit<DbAppointment, 'id' | 'created_at'>) => {
+  // Log the appointment data being sent
+  if (import.meta.env.DEV) {
+    console.log('Creating appointment with data:', appointment);
+  }
+
+  // Extract the time from appointment_time for start_time
+  const appointmentDate = new Date(appointment.appointment_time);
+  const startTime = appointmentDate.toTimeString().split(' ')[0]; // Gets HH:MM:SS
+
+  // Get the service duration
+  const { data: service } = await supabase
+    .from('services')
+    .select('duration_minutes')
+    .eq('id', appointment.service_id)
+    .single();
+
+  if (!service) {
+    console.error('Service not found:', appointment.service_id);
+    return { 
+      success: false, 
+      error: { 
+        message: 'Selected service not found',
+        code: 'SERVICE_NOT_FOUND'
+      } 
+    };
+  }
+
+  const appointmentData = {
+    ...appointment,
+    start_time: startTime,
+    duration_minutes: service.duration_minutes
+  };
+
   const { data, error } = await supabase
     .from('appointments')
-    .insert([appointment])
+    .insert([appointmentData])
     .select();
   
   if (error) {
-    console.error('Error creating appointment:', error);
+    console.error('Error creating appointment:', {
+      error,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorDetails: error.details,
+      errorHint: error.hint,
+      data: appointmentData
+    });
     return { success: false, error };
   }
   
@@ -233,4 +381,192 @@ export const checkBarberAvailability = async (
   }
   
   return timeSlots;
+};
+
+export const fetchBarberSpecializations = async (barberId?: string) => {
+  let query = supabase
+    .from('barber_specializations')
+    .select('*');
+  
+  if (barberId) {
+    query = query.eq('barber_id', barberId);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error('Error fetching barber specializations:', error);
+    return null;
+  }
+  
+  return data as DbBarberSpecialization[];
+};
+
+export const fetchBarberAvailability = async (barberId: string, date: string) => {
+  const { data, error } = await supabase
+    .from('barber_availability')
+    .select('*')
+    .eq('barber_id', barberId)
+    .eq('date', date)
+    .eq('is_available', true);
+  
+  if (error) {
+    console.error('Error fetching barber availability:', error);
+    return null;
+  }
+  
+  return data as DbBarberAvailability[];
+};
+
+export const fetchCustomerPreferences = async (email: string) => {
+  const { data, error } = await supabase
+    .from('customer_preferences')
+    .select('*')
+    .eq('customer_email', email)
+    .single();
+  
+  if (error) {
+    console.error('Error fetching customer preferences:', error);
+    return null;
+  }
+  
+  return data as DbCustomerPreference;
+};
+
+export const updateCustomerPreferences = async (preferences: Partial<DbCustomerPreference>) => {
+  const { data, error } = await supabase
+    .from('customer_preferences')
+    .upsert({
+      ...preferences,
+      updated_at: new Date().toISOString()
+    })
+    .select();
+  
+  if (error) {
+    console.error('Error updating customer preferences:', error);
+    return null;
+  }
+  
+  return data[0] as DbCustomerPreference;
+};
+
+export const fetchProducts = async (category?: string) => {
+  let query = supabase
+    .from('product_inventory')
+    .select('*')
+    .eq('is_available', true);
+  
+  if (category) {
+    query = query.eq('category', category);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error('Error fetching products:', error);
+    return null;
+  }
+  
+  return data as DbProduct[];
+};
+
+export const createGiftCard = async (amount: number) => {
+  const cardNumber = generateGiftCardNumber();
+  
+  const { data, error } = await supabase
+    .from('gift_cards')
+    .insert([{
+      card_number: cardNumber,
+      amount,
+      expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year expiry
+    }])
+    .select();
+  
+  if (error) {
+    console.error('Error creating gift card:', error);
+    return null;
+  }
+  
+  return data[0] as DbGiftCard;
+};
+
+export const createGroupBooking = async (booking: Omit<DbGroupBooking, 'id' | 'created_at'>) => {
+  const { data, error } = await supabase
+    .from('group_bookings')
+    .insert([booking])
+    .select();
+  
+  if (error) {
+    console.error('Error creating group booking:', error);
+    return null;
+  }
+  
+  return data[0] as DbGroupBooking;
+};
+
+export const joinWaitlist = async (waitlistEntry: Omit<DbWaitlist, 'id' | 'created_at' | 'waitlist_time' | 'status'>) => {
+  const { data, error } = await supabase
+    .from('waitlist')
+    .insert([{
+      ...waitlistEntry,
+      status: 'Waiting',
+      waitlist_time: new Date().toISOString()
+    }])
+    .select();
+  
+  if (error) {
+    console.error('Error joining waitlist:', error);
+    return null;
+  }
+  
+  return data[0] as DbWaitlist;
+};
+
+export const submitBarberRating = async (rating: Omit<DbBarberRating, 'id' | 'created_at'>) => {
+  const { data, error } = await supabase
+    .from('barber_ratings')
+    .insert([rating])
+    .select();
+  
+  if (error) {
+    console.error('Error submitting barber rating:', error);
+    return null;
+  }
+  
+  return data[0] as DbBarberRating;
+};
+
+export const fetchStyleCategories = async () => {
+  const { data, error } = await supabase
+    .from('style_categories')
+    .select('*');
+  
+  if (error) {
+    console.error('Error fetching style categories:', error);
+    return null;
+  }
+  
+  return data as DbStyleCategory[];
+};
+
+export const requestEmergencySlot = async (slot: Omit<DbEmergencySlot, 'id' | 'created_at'>) => {
+  const { data, error } = await supabase
+    .from('emergency_slots')
+    .insert([slot])
+    .select();
+  
+  if (error) {
+    console.error('Error requesting emergency slot:', error);
+    return null;
+  }
+  
+  return data[0] as DbEmergencySlot;
+};
+
+// Helper function to generate gift card numbers
+const generateGiftCardNumber = () => {
+  const prefix = 'GC';
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `${prefix}${timestamp}${random}`;
 };

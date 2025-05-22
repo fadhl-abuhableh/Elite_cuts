@@ -1,4 +1,3 @@
-
 import { ChatBot } from '@/components/ui/ChatBot';
 import TeamMember from '@/components/TeamMember';
 import { barbers } from '@/utils/chatbotData';
@@ -39,7 +38,7 @@ const About = () => {
             </div>
             <div className="rounded-lg overflow-hidden">
               <img 
-                src="https://images.unsplash.com/photo-1567189621895-838bf9567f00?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80" 
+                src="https://images.unsplash.com/photo-1592647420148-bfcc177e2117?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8YmFyYmVyc2hvcHxlbnwwfHwwfHx8MA%3D%3D" 
                 alt="Barbershop story"
                 className="w-full h-auto"
               />
@@ -167,7 +166,7 @@ const About = () => {
             </div>
             <div className="rounded-lg overflow-hidden h-72">
               <img 
-                src="https://images.unsplash.com/photo-1634302086887-13b5281d0eee?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" 
+                src="https://images.unsplash.com/photo-1622286342621-4bd786c2447c?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" 
                 alt="Waiting Area"
                 className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
               />

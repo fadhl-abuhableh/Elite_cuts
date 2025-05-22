@@ -3,18 +3,30 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { fetchLocations } from '@/lib/supabase';
 
+// Get the token from environment variable
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+
+// Validate token
+if (!MAPBOX_TOKEN) {
+  console.error('Mapbox token is missing. Please add VITE_MAPBOX_TOKEN to your .env file');
+}
+
+// Set the access token
+mapboxgl.accessToken = MAPBOX_TOKEN || '';
+
 export const Map = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [location, setLocation] = useState({
-    name: 'EliteCuts',
-    address: 'Bağdat Cad. No:105/B',
-    city: 'Kadıköy',
+    name: 'Elite Cuts Main Branch',
+    address: 'Altayçeşme, Bağdat Cad. NO:105 D:b',
+    city: 'Maltepe',
     state: 'Istanbul',
     country: 'Turkey',
-    // Bağdat Caddesi coordinates (approximate)
-    longitude: 29.0587,
-    latitude: 40.9625
+    postal_code: '34840',
+    // Exact coordinates for Altayçeşme, Bağdat Cad. NO:105 D:b, Maltepe
+    longitude: 29.1334,
+    latitude: 40.9356
   });
   const [mapError, setMapError] = useState<string | null>(null);
   
@@ -34,6 +46,7 @@ export const Map = () => {
             city: mainLocation.city || prev.city,
             state: mainLocation.state || prev.state,
             country: mainLocation.country || prev.country,
+            postal_code: mainLocation.postal_code || prev.postal_code,
             // Keep default coordinates if not provided in the DB
             longitude: prev.longitude,
             latitude: prev.latitude
@@ -49,18 +62,25 @@ export const Map = () => {
 
   useEffect(() => {
     if (!mapContainer.current) return;
+    if (!MAPBOX_TOKEN) {
+      setMapError('Mapbox token is missing. Please check your environment configuration.');
+      return;
+    }
 
-    // Initialize map with Mapbox public token
-    mapboxgl.accessToken = 'pk.eyJ1IjoibG92YWJsZS1haS1kZXYiLCJhIjoiY2xweWIxdzc3MGkxcjJqbzVrdzZrdngyNCJ9.fsywR9wMZ_K-OmvqYpKJSg';
-    
     try {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v11',
         center: [location.longitude, location.latitude],
-        zoom: 14
+        zoom: 16
       });
-      
+
+      // Add error handling for map loading
+      map.current.on('error', (e) => {
+        console.error('Mapbox error:', e);
+        setMapError('Failed to load map. Please try again later.');
+      });
+
       // Add navigation controls
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
       
@@ -71,21 +91,23 @@ export const Map = () => {
           new mapboxgl.Popup({ offset: 25 })
             .setHTML(
               `<h3 class="font-bold">${location.name}</h3>
-              <p>${location.address}<br>${location.city}, ${location.state}</p>`
+              <p>${location.address}<br>${location.postal_code} ${location.city}, ${location.state}</p>`
             )
         )
         .addTo(map.current);
       
       // Open popup by default
       marker.togglePopup();
+
     } catch (error) {
       console.error('Error initializing map:', error);
-      setMapError('Unable to load map. Please try again later.');
+      setMapError('Failed to initialize map. Please try again later.');
     }
 
-    // Clean up on unmount
     return () => {
-      map.current?.remove();
+      if (map.current) {
+        map.current.remove();
+      }
     };
   }, [location]);
 
@@ -99,8 +121,9 @@ export const Map = () => {
           <div className="text-center p-4">
             <p className="text-red-500 mb-2">{mapError}</p>
             <p>You can still find us at:</p>
-            <p className="font-bold">{location.address}</p>
-            <p>{location.city}, {location.state}</p>
+            <p className="font-bold">{location.name}</p>
+            <p>{location.address}</p>
+            <p>{location.postal_code} {location.city}, {location.state}</p>
             <a 
               href={googleMapsUrl}
               target="_blank"
@@ -116,7 +139,8 @@ export const Map = () => {
           <div ref={mapContainer} className="absolute inset-0" />
           <div className="absolute top-4 left-4 bg-white p-3 rounded-lg shadow-md z-10">
             <h3 className="font-bold text-barber-navy">{location.name}</h3>
-            <p className="text-sm">{location.address}, {location.city}, {location.state}</p>
+            <p className="text-sm">{location.address}</p>
+            <p className="text-sm">{location.postal_code} {location.city}, {location.state}</p>
             <a 
               href={googleMapsUrl} 
               target="_blank"

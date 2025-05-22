@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { ChatBot } from '@/components/ui/ChatBot';
 import BookingForm from '@/components/BookingForm';
@@ -84,18 +83,51 @@ const Booking = () => {
           });
         }
         
-        // Handle hours data
-        if (hoursData && hoursData.length > 0) {
-          setHours(hoursData.map(hour => ({
-            day_of_week: hour.day_of_week,
-            open_time: hour.open_time,
-            close_time: hour.close_time,
-            is_closed: hour.is_closed
-          })));
-        }
+        // Set default hours since database connection failed
+        setHours([
+          {
+            day_of_week: 'Monday-Friday',
+            open_time: '9:00',
+            close_time: '19:00',
+            is_closed: false
+          },
+          {
+            day_of_week: 'Saturday',
+            open_time: '10:00',
+            close_time: '18:00',
+            is_closed: false
+          },
+          {
+            day_of_week: 'Sunday',
+            open_time: '10:00',
+            close_time: '16:00',
+            is_closed: false
+          }
+        ]);
         
       } catch (error) {
         console.error('Error loading data:', error);
+        // Set default hours when there's an error
+        setHours([
+          {
+            day_of_week: 'Monday-Friday',
+            open_time: '9:00',
+            close_time: '19:00',
+            is_closed: false
+          },
+          {
+            day_of_week: 'Saturday',
+            open_time: '10:00',
+            close_time: '18:00',
+            is_closed: false
+          },
+          {
+            day_of_week: 'Sunday',
+            open_time: '10:00',
+            close_time: '16:00',
+            is_closed: false
+          }
+        ]);
       } finally {
         setIsLoading(false);
       }
@@ -111,7 +143,7 @@ const Booking = () => {
   // Format hours for display
   const formatHours = () => {
     if (!hours || hours.length === 0) {
-      return "Mon-Fri: 9:00 AM - 7:00 PM\nSaturday: 10:00 AM - 6:00 PM\nSunday: 10:00 AM - 4:00 PM";
+      return "Monday-Friday: 9:00 - 19:00\nSaturday: 10:00 - 18:00\nSunday: 10:00 - 16:00";
     }
     
     return hours.map(hour => {

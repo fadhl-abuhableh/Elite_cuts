@@ -1,4 +1,3 @@
-
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ChatBot } from '@/components/ui/ChatBot';
@@ -16,7 +15,7 @@ const Index = () => {
       <section 
         className="relative min-h-screen flex items-center justify-center bg-cover bg-center py-32" 
         style={{ 
-          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80')"
+          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url('https://images.unsplash.com/photo-1546665291-dbef6ab58991?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')"
         }}
       >
         <div className="container-custom text-center text-white">
@@ -31,7 +30,7 @@ const Index = () => {
             <Button asChild size="lg" className="bg-barber-gold hover:bg-amber-500 text-barber-dark">
               <Link to="/booking">Book Appointment</Link>
             </Button>
-            <Button asChild size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
+            <Button asChild size="lg" variant="outline" className="border-white text-white hover:bg-white/10" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
               <Link to="/services">Our Services</Link>
             </Button>
           </div>

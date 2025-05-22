@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { initializeData } from '@/utils/chatbotData';
 import { toast } from 'sonner';
@@ -26,10 +25,6 @@ export function SupabaseInitializer() {
       try {
         await initializeData();
         setIsInitialized(true);
-        // Only show success toast in development
-        if (import.meta.env.DEV) {
-          toast.success('Supabase data loaded successfully');
-        }
       } catch (err) {
         console.error('Error initializing Supabase data:', err);
         setError('Failed to load data from Supabase');

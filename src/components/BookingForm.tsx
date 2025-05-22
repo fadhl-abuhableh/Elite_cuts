@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -27,11 +26,14 @@ import * as z from 'zod';
 import { fetchServices, fetchBarbers, createAppointment } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { DbService, DbBarber } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
-  phone: z.string().min(7, { message: "Please enter a valid phone number." }),
+  phone: z.string().regex(/^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/, { 
+    message: "Please enter a valid phone number (e.g., +90 555 123 4567)" 
+  }),
   service: z.string().min(1, { message: "Please select a service." }),
   barber: z.string().min(1, { message: "Please select a barber." }),
   date: z.string().min(1, { message: "Please select a date." }),
@@ -48,6 +50,13 @@ const BookingForm = () => {
   const [services, setServices] = useState<DbService[]>([]);
   const [barbers, setBarbers] = useState<DbBarber[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<Array<{value: string, label: string}>>([]);
+  const [selectedServiceDuration, setSelectedServiceDuration] = useState<number>(0);
+  const [existingAppointments, setExistingAppointments] = useState<Array<{
+    barber_id: string;
+    appointment_time: string;
+    duration_minutes: number;
+  }>>([]);
   
   useEffect(() => {
     const loadData = async () => {
@@ -132,21 +141,132 @@ const BookingForm = () => {
     },
   });
   
+  // Fetch existing appointments when date or barber changes
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      if (!selectedDate || !form.getValues('barber')) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select('barber_id, appointment_time, duration_minutes')
+          .eq('date', selectedDate)
+          .eq('barber_id', form.getValues('barber'));
+
+        if (error) throw error;
+        setExistingAppointments(data || []);
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch available time slots. Please try again.",
+          variant: "destructive"
+        });
+      }
+    };
+
+    fetchAppointments();
+  }, [selectedDate, form.watch('barber')]);
+
+  // Update service duration when service changes
+  useEffect(() => {
+    const serviceId = form.getValues('service');
+    if (serviceId) {
+      const service = services.find(s => s.id === serviceId);
+      if (service) {
+        setSelectedServiceDuration(service.duration_minutes);
+      }
+    }
+  }, [form.watch('service'), services]);
+
+  // Generate available time slots considering existing appointments
+  const generateAvailableTimeSlots = () => {
+    if (!selectedDate || !selectedServiceDuration) return [];
+
+    const slots: Array<{value: string, label: string}> = [];
+    const date = new Date(selectedDate);
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    
+    const startHour = isWeekend ? 10 : 9;
+    const endHour = isWeekend ? (date.getDay() === 0 ? 16 : 18) : 19;
+    
+    for (let hour = startHour; hour < endHour; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const slotStart = new Date(`${selectedDate}T${timeString}`);
+        const slotEnd = new Date(slotStart.getTime() + selectedServiceDuration * 60000);
+
+        // Check if this slot overlaps with any existing appointments
+        const isSlotAvailable = !existingAppointments.some(appointment => {
+          const appointmentStart = new Date(appointment.appointment_time);
+          const appointmentEnd = new Date(appointmentStart.getTime() + appointment.duration_minutes * 60000);
+          
+          return (
+            (slotStart >= appointmentStart && slotStart < appointmentEnd) ||
+            (slotEnd > appointmentStart && slotEnd <= appointmentEnd) ||
+            (slotStart <= appointmentStart && slotEnd >= appointmentEnd)
+          );
+        });
+
+        if (isSlotAvailable) {
+          slots.push({
+            value: timeString,
+            label: `${timeString} (${selectedServiceDuration} min)`
+          });
+        }
+      }
+    }
+    
+    return slots;
+  };
+
+  // Update available time slots when dependencies change
+  useEffect(() => {
+    const slots = generateAvailableTimeSlots();
+    setAvailableTimeSlots(slots);
+    
+    // Reset time selection if current selection is no longer available
+    const currentTime = form.getValues('time');
+    if (currentTime && !slots.find(slot => slot.value === currentTime)) {
+      form.setValue('time', '');
+    }
+  }, [selectedDate, selectedServiceDuration, existingAppointments]);
+  
   const onSubmit = async (data: FormValues) => {
-    console.log('Booking form submitted:', data);
+    if (import.meta.env.DEV) {
+      console.log('Raw form data:', data);
+    }
     
     try {
-      // Format the appointment date and time
+      // Create a date object from the selected date and time
       const appointmentDate = new Date(`${data.date}T${data.time}`);
       
+      // Get the selected service to get its duration
+      const selectedService = services.find(s => s.id === data.service);
+      if (!selectedService) {
+        throw new Error('Selected service not found');
+      }
+      
+      // Format the appointment data
       const appointmentData = {
         customer_name: data.name,
         customer_email: data.email,
         service_id: data.service,
         barber_id: data.barber,
         appointment_time: appointmentDate.toISOString(),
+        date: data.date,
+        start_time: data.time,
+        duration_minutes: selectedService.duration_minutes,
         notes: data.notes || '',
       };
+
+      if (import.meta.env.DEV) {
+        console.log('Formatted appointment data:', {
+          ...appointmentData,
+          appointment_time_parsed: new Date(appointmentData.appointment_time).toLocaleString(),
+          date_parsed: new Date(appointmentData.date).toLocaleDateString()
+        });
+      }
       
       const result = await createAppointment(appointmentData);
       
@@ -158,17 +278,24 @@ const BookingForm = () => {
         
         form.reset();
       } else {
+        console.error('Appointment creation failed:', {
+          error: result.error,
+          data: appointmentData
+        });
         toast({
           title: "Booking Failed",
-          description: "There was an error booking your appointment. Please try again.",
+          description: result.error?.message || "There was an error booking your appointment. Please try again.",
           variant: "destructive"
         });
       }
     } catch (error) {
-      console.error('Error submitting appointment:', error);
+      console.error('Error submitting appointment:', {
+        error,
+        formData: data
+      });
       toast({
         title: "Booking Failed",
-        description: "There was an error booking your appointment. Please try again.",
+        description: error instanceof Error ? error.message : "There was an error booking your appointment. Please try again.",
         variant: "destructive"
       });
     }
@@ -343,21 +470,32 @@ const BookingForm = () => {
                   <Select 
                     onValueChange={field.onChange} 
                     defaultValue={field.value}
-                    disabled={!selectedDate}
+                    disabled={!selectedDate || !selectedServiceDuration}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder={selectedDate ? "Select a time" : "First select a date"} />
+                        <SelectValue placeholder={
+                          !selectedDate ? "First select a date" :
+                          !selectedServiceDuration ? "First select a service" :
+                          availableTimeSlots.length === 0 ? "No available slots" :
+                          "Select a time"
+                        } />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
                       <SelectGroup>
                         <SelectLabel>Available Times</SelectLabel>
-                        {timeSlots.map((slot) => (
-                          <SelectItem key={slot.value} value={slot.value}>
-                            {slot.label}
+                        {availableTimeSlots.length === 0 ? (
+                          <SelectItem value="none" disabled>
+                            No available slots for this date
                           </SelectItem>
-                        ))}
+                        ) : (
+                          availableTimeSlots.map((slot) => (
+                            <SelectItem key={slot.value} value={slot.value}>
+                              {slot.label}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
