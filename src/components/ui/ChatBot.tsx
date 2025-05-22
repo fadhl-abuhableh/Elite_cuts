@@ -20,6 +20,7 @@ export function ChatBot({ className }: ChatBotProps) {
     input,
     setInput,
     messages,
+    setMessages,
     isTyping,
     handleSend,
     isLoading,

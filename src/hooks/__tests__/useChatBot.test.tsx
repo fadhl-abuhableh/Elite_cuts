@@ -1,3 +1,4 @@
+
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChatBot } from '../useChatBot';
@@ -80,7 +81,6 @@ vi.mock('@/lib/supabase', () => {
 // Extend the hook type to include processUserInput
 type ChatBotHook = ReturnType<typeof useChatBot> & {
   processUserInput: (text: string) => Promise<string>;
-  dataInitialized: boolean;
 };
 
 describe('useChatBot', () => {

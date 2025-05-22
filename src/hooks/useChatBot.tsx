@@ -32,6 +32,7 @@ export function useChatBot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [dataInitialized, setDataInitialized] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -63,6 +64,7 @@ export function useChatBot() {
         if (locationsData) setLocations(locationsData);
         if (workingHoursData) setWorkingHours(workingHoursData);
         
+        setDataInitialized(true);
       } catch (error) {
         console.error("Error loading chatbot data:", error);
         toast({
@@ -115,14 +117,19 @@ export function useChatBot() {
     if (workingHours.length === 0) return "I'm sorry, we couldn't load our hours information right now.";
     
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const sortedHours = [...workingHours].sort((a, b) => a.day_of_week - b.day_of_week);
+    const sortedHours = [...workingHours].sort((a, b) => {
+      // Ensure day_of_week is treated as a number for comparison
+      const dayA = typeof a.day_of_week === 'number' ? a.day_of_week : parseInt(a.day_of_week as any, 10);
+      const dayB = typeof b.day_of_week === 'number' ? b.day_of_week : parseInt(b.day_of_week as any, 10);
+      return dayA - dayB;
+    });
     
     return `Our current hours are:\n\n${sortedHours
       .map(hour => {
-        if (hour.is_closed) {
-          return `• ${dayNames[hour.day_of_week]}: Closed`;
+        if (hour.is_holiday) {
+          return `• ${dayNames[hour.day_of_week as number]}: Closed (${hour.holiday_name || 'Holiday'})`;
         }
-        return `• ${dayNames[hour.day_of_week]}: ${hour.start_time} - ${hour.end_time}`;
+        return `• ${dayNames[hour.day_of_week as number]}: ${hour.start_time || 'Closed'} - ${hour.end_time || 'Closed'}`;
       })
       .join('\n')}`;
   }, [workingHours]);
@@ -305,9 +312,11 @@ export function useChatBot() {
     input,
     setInput,
     messages,
+    setMessages,
     isTyping,
     handleSend,
     isLoading,
-    navigateToBooking
+    navigateToBooking,
+    dataInitialized
   };
 }
