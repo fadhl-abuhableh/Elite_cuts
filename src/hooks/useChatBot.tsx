@@ -90,8 +90,8 @@ export function useChatBot() {
   const formatServicesResponse = useCallback(() => {
     if (services.length === 0) return "I'm sorry, we couldn't load our service information right now.";
     
-    return `Here are our services:\n\n${services
-      .map(service => `• ${service.name}: $${service.price} (${service.duration_minutes} mins) - ${service.description || 'No description available.'}`)
+    return `💇‍♂️ Our Services:\n\n${services
+      .map(service => `• **${service.name}** - $${service.price} (${service.duration_minutes} mins)\n  ${service.description || 'No description available.'}`)
       .join('\n\n')}`;
   }, [services]);
 
@@ -99,8 +99,8 @@ export function useChatBot() {
   const formatBarbersResponse = useCallback(() => {
     if (barbers.length === 0) return "I'm sorry, we couldn't load our barber information right now.";
     
-    return `Here are our talented barbers:\n\n${barbers
-      .map(barber => `• ${barber.name} - ${barber.bio || 'No bio available.'}`)
+    return `👨‍💼 Our Talented Barbers:\n\n${barbers
+      .map(barber => `• **${barber.name}**\n  ${barber.bio || 'No bio available.'}`)
       .join('\n\n')}`;
   }, [barbers]);
 
@@ -109,7 +109,7 @@ export function useChatBot() {
     if (locations.length === 0) return "I'm sorry, we couldn't load our location information right now.";
     
     const location = locations[0]; // Assuming the first location is the primary one
-    return `We're located at:\n\n${location.name}\n${location.address}\n${location.city}\n\nPhone: ${location.phone || 'Not available'}\nEmail: ${location.email || 'Not available'}\n\nFeel free to visit us or book an appointment!`;
+    return `📍 Location Information:\n\n**${location.name}**\n${location.address}\n${location.city}\n\n📱 Phone: ${location.phone || 'Not available'}\n📧 Email: ${location.email || 'Not available'}\n\nFeel free to visit us or book an appointment!`;
   }, [locations]);
 
   // Format working hours
@@ -119,17 +119,18 @@ export function useChatBot() {
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const sortedHours = [...workingHours].sort((a, b) => {
       // Ensure day_of_week is treated as a number for comparison
-      const dayA = typeof a.day_of_week === 'number' ? a.day_of_week : parseInt(a.day_of_week as any, 10);
-      const dayB = typeof b.day_of_week === 'number' ? b.day_of_week : parseInt(b.day_of_week as any, 10);
+      const dayA = typeof a.day_of_week === 'number' ? a.day_of_week : parseInt(String(a.day_of_week), 10);
+      const dayB = typeof b.day_of_week === 'number' ? b.day_of_week : parseInt(String(b.day_of_week), 10);
       return dayA - dayB;
     });
     
-    return `Our current hours are:\n\n${sortedHours
+    return `⏰ Business Hours:\n\n${sortedHours
       .map(hour => {
-        if (hour.is_holiday) {
-          return `• ${dayNames[hour.day_of_week as number]}: Closed (${hour.holiday_name || 'Holiday'})`;
+        const dayIndex = typeof hour.day_of_week === 'number' ? hour.day_of_week : parseInt(String(hour.day_of_week), 10);
+        if (hour.is_working === false) {
+          return `• **${dayNames[dayIndex]}**: Closed`;
         }
-        return `• ${dayNames[hour.day_of_week as number]}: ${hour.start_time || 'Closed'} - ${hour.end_time || 'Closed'}`;
+        return `• **${dayNames[dayIndex]}**: ${hour.start_time} - ${hour.end_time}`;
       })
       .join('\n')}`;
   }, [workingHours]);
@@ -147,10 +148,10 @@ export function useChatBot() {
       return "I'm sorry, we don't have any active promotions at this time.";
     }
     
-    return `Here are our current promotions:\n\n${activePromotions
+    return `🎉 Current Promotions:\n\n${activePromotions
       .map(promo => {
         const validUntil = promo.valid_until ? `Valid until: ${new Date(promo.valid_until).toLocaleDateString()}` : 'No expiration date';
-        return `• ${promo.title}\n  ${promo.details || 'No details available.'}\n  ${validUntil}`;
+        return `• **${promo.title}**\n  ${promo.details || 'No details available.'}\n  ${validUntil}`;
       })
       .join('\n\n')}`;
   }, [promotions]);
@@ -184,7 +185,7 @@ export function useChatBot() {
     
     // Only return if we have a decent match
     if (highestScore >= 2 && bestMatch) {
-      return bestMatch.answer;
+      return `❓ ${bestMatch.answer}`;
     }
     
     return null;
@@ -200,7 +201,7 @@ export function useChatBot() {
       setMessages(prevMessages => [...prevMessages, {
         id: uuidv4(),
         sender: 'bot',
-        text: "Great! I can help you book an appointment. Would you like me to take you to our booking page?",
+        text: "📅 Great! I can help you book an appointment. Would you like me to take you to our booking page?",
         timestamp: new Date()
       }]);
       
