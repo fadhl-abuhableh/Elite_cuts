@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -92,6 +93,28 @@ export function useChatBot() {
     return `💇‍♂️ Our Services:\n\n${services
       .map(service => `• **${service.name}** - $${service.price} (${service.duration_minutes} mins)\n  ${service.description || 'No description available.'}`)
       .join('\n\n')}`;
+  }, [services]);
+
+  // Find specific service information
+  const findServiceInfo = useCallback((query: string) => {
+    if (services.length === 0) return null;
+    
+    const normalizedQuery = query.toLowerCase();
+    const matchingServices = services.filter(service => 
+      service.name.toLowerCase().includes(normalizedQuery) ||
+      (service.description && service.description.toLowerCase().includes(normalizedQuery))
+    );
+    
+    if (matchingServices.length === 0) return null;
+    
+    if (matchingServices.length === 1) {
+      const service = matchingServices[0];
+      return `💇‍♂️ For a **${service.name}**, the price is $${service.price} and it takes about ${service.duration_minutes} minutes.\n\n${service.description || ''}\n\nWould you like to book an appointment for this service?`;
+    }
+    
+    return `I found several services that match your query:\n\n${matchingServices
+      .map(service => `• **${service.name}** - $${service.price} (${service.duration_minutes} mins)`)
+      .join('\n')}`;
   }, [services]);
 
   // Format barbers for display
@@ -217,6 +240,39 @@ export function useChatBot() {
       return;
     }
 
+    // Check for haircut or price related questions first
+    const hairKeywords = ['haircut', 'cut', 'hair', 'trim'];
+    const priceKeywords = ['price', 'cost', 'how much', 'fee', 'charge', 'pricing'];
+    
+    const isHaircutQuery = hairKeywords.some(keyword => normalizedInput.includes(keyword));
+    const isPriceQuery = priceKeywords.some(keyword => normalizedInput.includes(keyword));
+    
+    if (isHaircutQuery || isPriceQuery) {
+      // If asking about a specific haircut
+      const serviceInfo = findServiceInfo(userInput);
+      
+      if (serviceInfo) {
+        setMessages(prevMessages => [...prevMessages, {
+          id: uuidv4(),
+          sender: 'bot',
+          text: serviceInfo,
+          timestamp: new Date()
+        }]);
+        setIsTyping(false);
+        return;
+      }
+      
+      // If just asking about prices in general, show all services
+      setMessages(prevMessages => [...prevMessages, {
+        id: uuidv4(),
+        sender: 'bot',
+        text: formatServicesResponse(),
+        timestamp: new Date()
+      }]);
+      setIsTyping(false);
+      return;
+    }
+
     // Try to find a matching FAQ first
     const faqAnswer = formatFAQResponse(normalizedInput);
     if (faqAnswer) {
@@ -282,7 +338,7 @@ export function useChatBot() {
     }
     
     setIsTyping(false);
-  }, [formatServicesResponse, formatBarbersResponse, formatLocationResponse, formatHoursResponse, formatPromotionsResponse, formatFAQResponse]);
+  }, [formatServicesResponse, formatBarbersResponse, formatLocationResponse, formatHoursResponse, formatPromotionsResponse, formatFAQResponse, findServiceInfo]);
 
   // Handle sending a message
   const handleSend = useCallback(() => {
