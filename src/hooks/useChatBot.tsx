@@ -127,10 +127,10 @@ export function useChatBot() {
     return `⏰ Business Hours:\n\n${sortedHours
       .map(hour => {
         const dayIndex = typeof hour.day_of_week === 'number' ? hour.day_of_week : parseInt(String(hour.day_of_week), 10);
-        if (hour.is_working === false) {
+        if (hour.is_holiday || hour.is_working === false) {
           return `• **${dayNames[dayIndex]}**: Closed`;
         }
-        return `• **${dayNames[dayIndex]}**: ${hour.start_time} - ${hour.end_time}`;
+        return `• **${dayNames[dayIndex]}**: ${hour.open_time} - ${hour.close_time}`;
       })
       .join('\n')}`;
   }, [workingHours]);
