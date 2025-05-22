@@ -33,6 +33,7 @@ export function useChatBot() {
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [dataInitialized, setDataInitialized] = useState(false);
+  const [conversationContext, setConversationContext] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -117,6 +118,27 @@ export function useChatBot() {
       .join('\n')}`;
   }, [services]);
 
+  // Get barber information by ID or name
+  const getBarberInfo = useCallback((barberId?: string, barberName?: string) => {
+    if (barbers.length === 0) return null;
+    
+    let barber: DbBarber | undefined;
+    
+    if (barberId) {
+      barber = barbers.find(b => b.id === barberId);
+    } else if (barberName) {
+      // Case-insensitive partial name matching
+      const normalizedName = barberName.toLowerCase();
+      barber = barbers.find(b => 
+        b.name.toLowerCase().includes(normalizedName)
+      );
+    }
+    
+    if (!barber) return null;
+    
+    return barber;
+  }, [barbers]);
+
   // Format barbers for display
   const formatBarbersResponse = useCallback(() => {
     if (barbers.length === 0) return "I'm sorry, we couldn't load our barber information right now.";
@@ -125,6 +147,17 @@ export function useChatBot() {
       .map(barber => `• **${barber.name}**\n  ${barber.bio || 'No bio available.'}`)
       .join('\n\n')}`;
   }, [barbers]);
+
+  // Display barber details with specializations (if available)
+  const formatBarberDetails = useCallback((barberName: string) => {
+    const barber = getBarberInfo(undefined, barberName);
+    
+    if (!barber) {
+      return `I'm sorry, I couldn't find information about a barber named "${barberName}".`;
+    }
+    
+    return `👨‍💼 **${barber.name}**\n\n${barber.bio || 'No bio available.'}\n\n${barber.is_active ? '✅ Currently available for bookings' : '❌ Not currently available for bookings'}`;
+  }, [getBarberInfo]);
 
   // Format location information
   const formatLocationResponse = useCallback(() => {
@@ -178,36 +211,63 @@ export function useChatBot() {
       .join('\n\n')}`;
   }, [promotions]);
 
+  // Get today's hours
+  const getTodaysHours = useCallback(() => {
+    if (workingHours.length === 0) return null;
+    
+    const today = new Date().getDay(); // 0 for Sunday, 1 for Monday, etc.
+    
+    const todayHours = workingHours.find(hour => {
+      const dayIndex = typeof hour.day_of_week === 'number' ? hour.day_of_week : parseInt(String(hour.day_of_week), 10);
+      return dayIndex === today;
+    });
+    
+    if (!todayHours) return null;
+    
+    if (todayHours.is_closed) {
+      return "We're closed today.";
+    }
+    
+    return `We're open today from ${todayHours.open_time} to ${todayHours.close_time}.`;
+  }, [workingHours]);
+
   // Format FAQ response
   const formatFAQResponse = useCallback((query: string) => {
     if (faqs.length === 0) return null;
     
-    // Find most relevant FAQ - simple implementation
-    const queryWords = query.toLowerCase().split(/\s+/);
+    // Find most relevant FAQ - improved implementation
+    const queryWords = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
     
-    let bestMatch = null;
-    let highestScore = 0;
-    
-    for (const faq of faqs) {
+    // Calculate relevance score for each FAQ
+    const scoredFaqs = faqs.map(faq => {
       const questionWords = faq.question.toLowerCase().split(/\s+/);
       const answerWords = faq.answer.toLowerCase().split(/\s+/);
       const allWords = [...new Set([...questionWords, ...answerWords])];
       
       let score = 0;
+      // Score for exact phrase matches
+      if (faq.question.toLowerCase().includes(query.toLowerCase())) {
+        score += 10;
+      }
+      if (faq.answer.toLowerCase().includes(query.toLowerCase())) {
+        score += 5;
+      }
+      
+      // Score for individual word matches
       for (const word of queryWords) {
-        if (word.length <= 2) continue; // Skip short words
         if (allWords.includes(word)) score += 1;
       }
       
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatch = faq;
-      }
-    }
+      return { faq, score };
+    });
+    
+    // Sort by score and get the best match
+    scoredFaqs.sort((a, b) => b.score - a.score);
+    const bestMatch = scoredFaqs[0];
     
     // Only return if we have a decent match
-    if (highestScore >= 2 && bestMatch) {
-      return `❓ ${bestMatch.answer}`;
+    if (bestMatch && bestMatch.score >= 2) {
+      return `❓ ${bestMatch.faq.answer}`;
     }
     
     return null;
@@ -237,6 +297,9 @@ export function useChatBot() {
         }]);
         setIsTyping(false);
       }, 1000);
+      
+      // Set context for potential follow-up questions
+      setConversationContext('booking');
       return;
     }
 
@@ -258,6 +321,7 @@ export function useChatBot() {
           text: serviceInfo,
           timestamp: new Date()
         }]);
+        setConversationContext('service');
         setIsTyping(false);
         return;
       }
@@ -269,8 +333,58 @@ export function useChatBot() {
         text: formatServicesResponse(),
         timestamp: new Date()
       }]);
+      setConversationContext('services');
       setIsTyping(false);
       return;
+    }
+
+    // Check for barber-specific queries
+    const barberKeywords = ['barber', 'stylist', 'staff'];
+    const isBarberQuery = barberKeywords.some(keyword => normalizedInput.includes(keyword));
+    
+    if (isBarberQuery) {
+      // Check if asking about a specific barber
+      for (const barber of barbers) {
+        if (normalizedInput.includes(barber.name.toLowerCase())) {
+          setMessages(prevMessages => [...prevMessages, {
+            id: uuidv4(),
+            sender: 'bot',
+            text: formatBarberDetails(barber.name),
+            timestamp: new Date()
+          }]);
+          setConversationContext('barber');
+          setIsTyping(false);
+          return;
+        }
+      }
+      
+      // If just asking about barbers in general
+      setMessages(prevMessages => [...prevMessages, {
+        id: uuidv4(),
+        sender: 'bot',
+        text: formatBarbersResponse(),
+        timestamp: new Date()
+      }]);
+      setConversationContext('barbers');
+      setIsTyping(false);
+      return;
+    }
+
+    // Check for today-specific queries
+    if (normalizedInput.includes('today') && 
+        (normalizedInput.includes('open') || normalizedInput.includes('hour') || normalizedInput.includes('time'))) {
+      const todaysHours = getTodaysHours();
+      if (todaysHours) {
+        setMessages(prevMessages => [...prevMessages, {
+          id: uuidv4(),
+          sender: 'bot',
+          text: `⏰ ${todaysHours}`,
+          timestamp: new Date()
+        }]);
+        setConversationContext('hours');
+        setIsTyping(false);
+        return;
+      }
     }
 
     // Try to find a matching FAQ first
@@ -294,6 +408,7 @@ export function useChatBot() {
         text: formatServicesResponse(),
         timestamp: new Date()
       }]);
+      setConversationContext('services');
     } 
     else if (normalizedInput.includes('barber') || normalizedInput.includes('stylist') || normalizedInput.includes('staff')) {
       setMessages(prevMessages => [...prevMessages, {
@@ -302,6 +417,7 @@ export function useChatBot() {
         text: formatBarbersResponse(),
         timestamp: new Date()
       }]);
+      setConversationContext('barbers');
     }
     else if (normalizedInput.includes('location') || normalizedInput.includes('address') || normalizedInput.includes('where') || normalizedInput.includes('find')) {
       setMessages(prevMessages => [...prevMessages, {
@@ -310,6 +426,7 @@ export function useChatBot() {
         text: formatLocationResponse(),
         timestamp: new Date()
       }]);
+      setConversationContext('location');
     }
     else if (normalizedInput.includes('hour') || normalizedInput.includes('time') || normalizedInput.includes('open') || normalizedInput.includes('close')) {
       setMessages(prevMessages => [...prevMessages, {
@@ -318,6 +435,7 @@ export function useChatBot() {
         text: formatHoursResponse(),
         timestamp: new Date()
       }]);
+      setConversationContext('hours');
     }
     else if (normalizedInput.includes('promotion') || normalizedInput.includes('deal') || normalizedInput.includes('discount') || normalizedInput.includes('offer')) {
       setMessages(prevMessages => [...prevMessages, {
@@ -326,6 +444,19 @@ export function useChatBot() {
         text: formatPromotionsResponse(),
         timestamp: new Date()
       }]);
+      setConversationContext('promotions');
+    }
+    else if (normalizedInput.includes('yes') && conversationContext === 'booking') {
+      // Handle confirmation for booking
+      setMessages(prevMessages => [...prevMessages, {
+        id: uuidv4(),
+        sender: 'bot',
+        text: "Great! I'll take you to our booking page now.",
+        timestamp: new Date()
+      }]);
+      setTimeout(() => navigateToBooking(), 1500);
+      setIsTyping(false);
+      return;
     }
     else {
       // Fallback response for unrelated questions
@@ -335,10 +466,24 @@ export function useChatBot() {
         text: "I'm sorry, but I can only provide information about our barbershop services, barbers, locations, hours, and promotions. Is there anything specific about EliteCuts that I can help you with?",
         timestamp: new Date()
       }]);
+      setConversationContext(null);
     }
     
     setIsTyping(false);
-  }, [formatServicesResponse, formatBarbersResponse, formatLocationResponse, formatHoursResponse, formatPromotionsResponse, formatFAQResponse, findServiceInfo]);
+  }, [
+    formatServicesResponse, 
+    formatBarbersResponse, 
+    formatLocationResponse, 
+    formatHoursResponse, 
+    formatPromotionsResponse, 
+    formatFAQResponse, 
+    findServiceInfo, 
+    formatBarberDetails,
+    getTodaysHours,
+    navigateToBooking,
+    conversationContext,
+    barbers
+  ]);
 
   // Handle sending a message
   const handleSend = useCallback(() => {
