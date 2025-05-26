@@ -332,55 +332,67 @@ export const createAppointment = async (appointment: Omit<DbAppointment, 'id' | 
 export const checkBarberAvailability = async (
   barberId: string,
   date: string
-) => {
-  // Get the start and end of the day
-  const startDate = new Date(date);
-  startDate.setHours(0, 0, 0, 0);
-  
-  const endDate = new Date(date);
-  endDate.setHours(23, 59, 59, 999);
-  
-  // Get all appointments for the barber on that day
-  const { data: appointments, error } = await supabase
-    .from('appointments')
-    .select('*')
-    .eq('barber_id', barberId)
-    .gte('appointment_time', startDate.toISOString())
-    .lte('appointment_time', endDate.toISOString());
-  
-  if (error) {
-    console.error('Error checking availability:', error);
-    return null;
-  }
-  
-  // Generate all possible time slots
-  const dayOfWeek = startDate.getDay();
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  const startHour = isWeekend ? 10 : 9;
-  const endHour = isWeekend ? (dayOfWeek === 0 ? 16 : 18) : 19;
-  
-  const timeSlots = [];
-  for (let hour = startHour; hour < endHour; hour++) {
-    for (let minute = 0; minute < 60; minute += 30) {
-      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      const slotDate = new Date(startDate);
-      slotDate.setHours(hour, minute, 0, 0);
-      
-      // Check if this slot conflicts with any existing appointment
-      const isBooked = appointments?.some(apt => {
-        const aptTime = new Date(apt.appointment_time);
-        // Assuming appointments are 30 minutes
-        return Math.abs(aptTime.getTime() - slotDate.getTime()) < 30 * 60 * 1000;
-      });
-      
-      timeSlots.push({
-        time: timeString,
-        available: !isBooked
-      });
+): Promise<Array<{ time: string; available: boolean }>> => {
+  try {
+    // Get the start and end of the day
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+    
+    // Get all appointments for the barber on that day
+    const { data: appointments, error } = await supabase
+      .from('appointments')
+      .select('appointment_time, duration_minutes')
+      .eq('barber_id', barberId)
+      .gte('appointment_time', startDate.toISOString())
+      .lte('appointment_time', endDate.toISOString());
+    
+    if (error) {
+      console.error('Error checking availability:', error);
+      return [];
     }
+    
+    // Generate all possible time slots
+    const dayOfWeek = startDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const startHour = isWeekend ? 10 : 9;
+    const endHour = isWeekend ? (dayOfWeek === 0 ? 16 : 18) : 19;
+    
+    const timeSlots: Array<{ time: string; available: boolean }> = [];
+    
+    for (let hour = startHour; hour < endHour; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const slotDate = new Date(startDate);
+        slotDate.setHours(hour, minute, 0, 0);
+        
+        // Check if this slot conflicts with any existing appointment
+        const isBooked = appointments?.some(apt => {
+          const aptTime = new Date(apt.appointment_time);
+          const aptEnd = new Date(aptTime.getTime() + (apt.duration_minutes || 30) * 60000);
+          const slotEnd = new Date(slotDate.getTime() + 30 * 60000); // Assume 30-minute slots
+          
+          return (
+            (slotDate >= aptTime && slotDate < aptEnd) ||
+            (slotEnd > aptTime && slotEnd <= aptEnd) ||
+            (slotDate <= aptTime && slotEnd >= aptEnd)
+          );
+        });
+        
+        timeSlots.push({
+          time: timeString,
+          available: !isBooked
+        });
+      }
+    }
+    
+    return timeSlots;
+  } catch (error) {
+    console.error('Error in checkBarberAvailability:', error);
+    return [];
   }
-  
-  return timeSlots;
 };
 
 export const fetchBarberSpecializations = async (barberId?: string) => {
@@ -569,4 +581,38 @@ const generateGiftCardNumber = () => {
   const timestamp = Date.now().toString().slice(-6);
   const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
   return `${prefix}${timestamp}${random}`;
+};
+
+export const checkBarberWorkingDay = async (
+  barberId: string,
+  date: string
+): Promise<{ isWorking: boolean; dayName: string }> => {
+  try {
+    const dayOfWeek = new Date(date).getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    const { data, error } = await supabase
+      .from('barber_schedules')
+      .select('is_working')
+      .eq('barber_id', barberId)
+      .eq('day_of_week', dayOfWeek)
+      .single();
+    
+    if (error) {
+      console.error('Error checking barber schedule:', error);
+      return { isWorking: true, dayName: getDayName(dayOfWeek) }; // Default to true if error
+    }
+    
+    return {
+      isWorking: data?.is_working ?? true, // Default to true if no schedule found
+      dayName: getDayName(dayOfWeek)
+    };
+  } catch (error) {
+    console.error('Error in checkBarberWorkingDay:', error);
+    return { isWorking: true, dayName: getDayName(new Date(date).getDay()) };
+  }
+};
+
+const getDayName = (dayOfWeek: number): string => {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[dayOfWeek];
 };

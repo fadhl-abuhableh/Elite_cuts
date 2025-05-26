@@ -3,6 +3,14 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { fetchLocations } from '@/lib/supabase';
 
+// Debug environment variables
+console.log('All env variables:', {
+  VITE_MAPBOX_TOKEN: import.meta.env.VITE_MAPBOX_TOKEN,
+  MODE: import.meta.env.MODE,
+  DEV: import.meta.env.DEV,
+  PROD: import.meta.env.PROD,
+});
+
 // Get the token from environment variable
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -13,6 +21,8 @@ if (!MAPBOX_TOKEN) {
 
 // Set the access token
 mapboxgl.accessToken = MAPBOX_TOKEN || '';
+
+console.log('Mapbox Token:', import.meta.env.VITE_MAPBOX_TOKEN);
 
 export const Map = () => {
   const mapContainer = useRef<HTMLDivElement>(null);

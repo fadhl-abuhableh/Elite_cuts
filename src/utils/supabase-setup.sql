@@ -474,3 +474,46 @@ CREATE POLICY "Allow public to join waitlist"
 -- Allow public to create emergency slot requests
 CREATE POLICY "Allow public to request emergency slots" 
     ON emergency_slots FOR INSERT WITH CHECK (true);
+
+-- Barber Schedules Table
+CREATE TABLE IF NOT EXISTS barber_schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    barber_id UUID REFERENCES barbers(id),
+    day_of_week INT CHECK (day_of_week BETWEEN 0 AND 6),
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    is_working BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT now()
+);
+
+-- Insert default schedules for barbers (working all days except one day off per barber)
+INSERT INTO barber_schedules (barber_id, day_of_week, start_time, end_time, is_working)
+SELECT 
+    b.id,
+    d.day,
+    CASE 
+        WHEN d.day IN (0, 6) THEN '10:00:00'::TIME  -- Weekend hours
+        ELSE '09:00:00'::TIME                       -- Weekday hours
+    END as start_time,
+    CASE 
+        WHEN d.day = 0 THEN '16:00:00'::TIME        -- Sunday closes early
+        WHEN d.day = 6 THEN '18:00:00'::TIME        -- Saturday closes early
+        ELSE '19:00:00'::TIME                       -- Regular closing time
+    END as end_time,
+    CASE
+        -- Each barber gets a different day off
+        WHEN (b.name = 'James Wilson' AND d.day = 1) OR    -- Monday off
+             (b.name = 'Michael Brown' AND d.day = 2) OR    -- Tuesday off
+             (b.name = 'David Kim' AND d.day = 3) OR        -- Wednesday off
+             (b.name = 'Robert Chen' AND d.day = 4)         -- Thursday off
+        THEN false
+        ELSE true
+    END as is_working
+FROM barbers b
+CROSS JOIN (
+    SELECT generate_series(0, 6) as day
+) d
+WHERE NOT EXISTS (
+    SELECT 1 FROM barber_schedules
+    WHERE barber_id = b.id AND day_of_week = d.day
+);

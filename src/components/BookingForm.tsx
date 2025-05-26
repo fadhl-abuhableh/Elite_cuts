@@ -23,7 +23,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
-import { fetchServices, fetchBarbers, createAppointment } from '@/lib/supabase';
+import { fetchServices, fetchBarbers, createAppointment, checkBarberWorkingDay } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { DbService, DbBarber } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
@@ -147,6 +147,20 @@ const BookingForm = () => {
       if (!selectedDate || !form.getValues('barber')) return;
 
       try {
+        // First check if the barber is working on this day
+        const barberSchedule = await checkBarberWorkingDay(form.getValues('barber'), selectedDate);
+        if (!barberSchedule.isWorking) {
+          toast({
+            title: "Barber Not Available",
+            description: `The selected barber is not available on ${barberSchedule.dayName}s. Please choose another day or select a different barber.`,
+            variant: "destructive"
+          });
+          form.setValue('time', ''); // Clear the time selection
+          setExistingAppointments([]);
+          setAvailableTimeSlots([]);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('appointments')
           .select('barber_id, appointment_time, duration_minutes')
